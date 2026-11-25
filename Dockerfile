@@ -9,11 +9,11 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm --filter @arpha/web build && pnpm --filter @arpha/server build
 # Self-contained production install of the server (no workspace links, no dev deps).
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm --filter @arpha/server deploy --prod /out/server
+RUN pnpm --filter @arpha/server deploy --prod /out/server
 
 # ---- runtime: only what the server needs ----
 FROM node:22-slim AS runtime
