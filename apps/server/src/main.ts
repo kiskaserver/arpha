@@ -11,7 +11,7 @@ const logger = createLogger(
 
 let ingest: Ingest | undefined
 if (config.telegramEnabled && !config.DEMO_MODE) {
-  const { TelegramIngest } = await import('./telegram/gramjs')
+  const { TelegramIngest } = await import('./telegram/client')
   ingest = new TelegramIngest({
     apiId: config.TG_API_ID!,
     apiHash: config.TG_API_HASH!,
@@ -34,7 +34,7 @@ const server = serve(
   },
 )
 
-// Third-party clients (GramJS) occasionally reject promises nobody awaits; log, don't die.
+// Third-party clients (teleproto) occasionally reject promises nobody awaits; log, don't die.
 process.on('unhandledRejection', (err) => logger.error({ err }, 'unhandled rejection'))
 
 runtime.start().catch((err) => {

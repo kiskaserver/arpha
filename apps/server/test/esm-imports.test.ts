@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * Vitest resolves modules through Vite, which forgives CommonJS deep imports
- * like `telegram/events`. Production runs plain Node ESM, which does not —
+ * like `telegram/events` (GramJS). Production runs plain Node ESM, which does not —
  * that once crashed the deploy. Import every external specifier with real Node.
  */
 const root = resolve(import.meta.dirname, '..')
@@ -32,8 +32,8 @@ const specifiers = [
 
 describe('runtime ESM imports', () => {
   it('finds the external dependencies', () => {
-    expect(specifiers).toContain('telegram')
-    expect(specifiers.some((s) => s.startsWith('telegram/'))).toBe(true)
+    expect(specifiers).toContain('teleproto')
+    expect(specifiers.some((s) => s.startsWith('teleproto/'))).toBe(true)
   })
 
   it('every external import loads under plain Node ESM', () => {

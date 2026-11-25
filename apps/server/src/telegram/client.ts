@@ -1,8 +1,7 @@
-import { Api, TelegramClient } from 'telegram'
-import { EditedMessage } from 'telegram/events/EditedMessage.js'
-import { NewMessage, type NewMessageEvent } from 'telegram/events/index.js'
-import { LogLevel } from 'telegram/extensions/Logger.js'
-import { StringSession } from 'telegram/sessions/index.js'
+import { Api, TelegramClient } from 'teleproto'
+import { EditedMessage, NewMessage, type NewMessageEvent } from 'teleproto/events'
+import { LogLevel } from 'teleproto/extensions/Logger'
+import { StringSession } from 'teleproto/sessions'
 import type { RawMessage } from '../extract/types'
 import type { MessageSource } from '../ingest/pipeline'
 import type { Logger } from '../logger'
@@ -22,7 +21,7 @@ export interface TelegramOptions {
 export type TelegramStatus = 'disabled' | 'connecting' | 'connected' | 'error'
 
 /**
- * MTProto user-account ingestion via GramJS. This is a thin adapter: all
+ * MTProto user-account ingestion via teleproto (the maintained GramJS fork). This is a thin adapter: all
  * logic lives in the pipeline, so this file is excluded from unit coverage
  * and exercised by the manual `pnpm tg:dump` smoke test.
  */
@@ -71,7 +70,7 @@ export class TelegramIngest implements MessageSource {
       }
       log.info({ channels: this.channels.map((c) => c.key) }, 'telegram connected')
 
-      // No `chats` filter: GramJS re-resolves it asynchronously and throws unhandled
+      // No `chats` filter: GramJS/teleproto re-resolves it asynchronously and throws unhandled
       // on some peers. Filtering by peer id in the handler is cheaper and safe.
       const handler = (event: NewMessageEvent) => {
         const m = event.message

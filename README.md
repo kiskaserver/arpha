@@ -60,7 +60,7 @@
 
 ```mermaid
 flowchart LR
-  TG["Telegram-канали<br/>(MTProto, GramJS)"] --> ING[ingest<br/>new/edit + reply chain]
+  TG["Telegram-канали<br/>(MTProto, teleproto)"] --> ING[ingest<br/>new/edit + reply chain]
   ING --> LLM["extract<br/>Claude Haiku 4.5<br/>tool use → JSON"]
   LLM --> GEO["geo<br/>газетир 1655 н.п.<br/>укр/рус, відмінки, fuzzy"]
   GEO --> FUS["fusion<br/>асоціація + Kalman CV<br/>життєвий цикл треків"]
@@ -74,7 +74,7 @@ flowchart LR
 | Шар           | Технологія                                            | Чому                                               |
 | ------------- | ----------------------------------------------------- | -------------------------------------------------- |
 | Сервер        | Node 22, **Hono**, TypeScript strict                  | мінімальний оверхед, один процес                   |
-| Telegram      | **GramJS** (MTProto user session)                     | читає будь-які канали, на які підписаний акаунт    |
+| Telegram      | **teleproto** (форк GramJS, MTProto user session)     | читає будь-які канали, на які підписаний акаунт    |
 | Розбір тексту | **Claude Haiku 4.5**, forced tool use, zod-валідація  | вільний текст, сленг, реплаї; не вигадує координат |
 | Геокодинг     | власний газетир (GeoNames + куровані орієнтири)       | координати дає лише газетир, не LLM                |
 | Трекінг       | 2D constant-velocity Kalman filter                    | швидкість/курс із шумних звітів                    |

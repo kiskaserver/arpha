@@ -18,7 +18,7 @@ export default defineConfig({
         '**/index.ts',
         // Composition root and thin I/O adapters: covered by e2e / smoke tests instead.
         'src/main.ts',
-        'src/telegram/gramjs.ts',
+        'src/telegram/client.ts',
         'src/push/webpush.ts',
         'src/sw.ts',
         'src/lib/map.ts',

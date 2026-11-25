@@ -8,9 +8,9 @@
  */
 import { stdin as input, stdout as output } from 'node:process'
 import { createInterface } from 'node:readline/promises'
-import { TelegramClient } from 'telegram'
-import { LogLevel } from 'telegram/extensions/Logger.js'
-import { StringSession } from 'telegram/sessions/index.js'
+import { TelegramClient } from 'teleproto'
+import { LogLevel } from 'teleproto/extensions/Logger'
+import { StringSession } from 'teleproto/sessions'
 
 process.loadEnvFile?.('.env')
 

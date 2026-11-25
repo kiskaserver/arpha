@@ -44,7 +44,7 @@ describe('config', () => {
 })
 
 describe('telegram mapping', () => {
-  it('maps GramJS messages to RawMessage', () => {
+  it('maps teleproto messages to RawMessage', () => {
     expect(
       toRawMessage(
         {
