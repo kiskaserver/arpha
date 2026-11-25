@@ -44,7 +44,7 @@ const envSchema = z.object({
   EXTRACT_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(4),
 
   ALERTS_IN_UA_TOKEN: optionalString,
-  ALERTS_POLL_MS: z.coerce.number().int().min(10_000).default(20_000),
+  ALERTS_POLL_MS: z.coerce.number().int().min(20_000).default(30_000),
 
   VAPID_PUBLIC_KEY: optionalString,
   VAPID_PRIVATE_KEY: optionalString,

@@ -119,10 +119,17 @@
     }
   },
   {
-    "name": "FPV is not tracked",
-    "text": "ФПВ вздовж траси на полуторку ... вдарила",
+    "name": "FPV over the outskirts is tracked",
+    "text": "ФПВ над космосом, курс Дослідна",
     "expected": {
-      "relevant": false
+      "relevant": true,
+      "events": [
+        {
+          "type": "fpv",
+          "location": "Космічний",
+          "toward": "Дослідна Станція"
+        }
+      ]
     }
   },
   {
@@ -133,10 +140,15 @@
     }
   },
   {
-    "name": "damage report after the fact",
+    "name": "fresh impact report marks the hit",
     "text": "🚨💥КАБ влучив у житловий будинок! У Космічному районі пошкоджено багатоповерхівку внаслідок авіаудару.",
     "expected": {
-      "relevant": false
+      "relevant": true,
+      "events": [
+        {
+          "place": "Космічний"
+        }
+      ]
     }
   },
   {
@@ -163,6 +175,73 @@
         {
           "action": "update",
           "location": "Осипенківський"
+        }
+      ]
+    }
+  },
+  {
+    "name": "bridges and dam closed",
+    "text": "Мости та ГЕС перекрито",
+    "expected": {
+      "relevant": true,
+      "closures": [
+        {
+          "object": "Мости Преображенського",
+          "status": "closed"
+        }
+      ]
+    }
+  },
+  {
+    "name": "traffic restored",
+    "text": "Рух мостами та греблею ДніпроГЕС відновлено.✅",
+    "expected": {
+      "relevant": true,
+      "closures": [
+        {
+          "object": "Мости Преображенського",
+          "status": "open"
+        }
+      ]
+    }
+  },
+  {
+    "name": "explosions at a place",
+    "text": "Вибухи в районі Балабиного 💥",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "explosion",
+          "location": "Балабине"
+        }
+      ]
+    }
+  },
+  {
+    "name": "molniya",
+    "text": "Молнія повз Кушугум на Балабине",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "molniya",
+          "location": "Кушугум",
+          "toward": "Балабине"
+        }
+      ]
+    }
+  },
+  {
+    "name": "ballistic direction",
+    "text": "Балістика з Криму на Запоріжжя!",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "ballistic",
+          "place": "Запоріжжя",
+          "from": "Крим"
         }
       ]
     }

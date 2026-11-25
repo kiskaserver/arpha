@@ -4,6 +4,7 @@ import {
   type LatLon,
   THREAT_PROFILES,
   type Track,
+  trackCone,
 } from '@arpha/shared'
 import { THREAT_COLORS } from './icons'
 import type { MotionModel } from './motion'
@@ -45,33 +46,61 @@ export function frameInterval(maxSpeedKmh: number, zoom: number, lat: number): n
   return Math.min(MAX_FRAME_MS, Math.max(MIN_FRAME_MS, 0.5 / pxPerMs))
 }
 
+/** Finished tracks stay visible for `lingerMin` minutes (user setting). */
+export function isVisible(t: Track, now: number, lingerMin: number): boolean {
+  return t.status === 'active' || now - t.updatedAt < lingerMin * 60_000
+}
+
 export interface FrameInput {
   tracks: Iterable<Track>
   motion: MotionModel
   now: number
   selected: string | null
+  lingerMin: number
 }
 
-/** Build the per-frame GeoJSON (pure; unit-tested). */
-export function buildFrame({ tracks, motion, now, selected }: FrameInput) {
+/** Build the per-frame GeoJSON (pure; unit-tested). Call `motion.advance(now)` first. */
+export function buildFrame({ tracks, motion, now, selected, lingerMin }: FrameInput) {
   const points: Feature[] = []
   const vectors: Feature[] = []
   const targets: Feature[] = []
+  const cones: Feature[] = []
+  const impacts: Feature[] = []
+  const predicted: Feature[] = []
   let maxSpeed = 0
   let selectedPose: (LatLon & { uncertaintyKm: number }) | null = null
 
   for (const t of tracks) {
+    if (!isVisible(t, now, lingerMin)) continue
+    const color = THREAT_COLORS[t.type]
+    const impact = t.status === 'active' ? t.prediction?.impact : null
+    if (impact) {
+      impacts.push({
+        type: 'Feature',
+        geometry: circlePolygon(impact, impact.radiusKm, 40),
+        properties: { id: t.id, color, selected: t.id === selected },
+      })
+    }
+    if (t.id === selected && t.prediction) {
+      for (const c of t.prediction.targets) {
+        predicted.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [c.lon, c.lat] },
+          properties: { label: `${c.name} ${Math.round(c.p * 100)}%`, p: c.p, color },
+        })
+      }
+    }
     if (!t.position) {
       if (t.target && t.status === 'active') {
         targets.push({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [t.target.lon, t.target.lat] },
-          properties: { id: t.id, color: THREAT_COLORS[t.type] },
+          properties: { id: t.id, color },
         })
       }
       continue
     }
-    const pose = motion.pose(t.id, now) ?? { ...t.position, heading: t.headingDeg }
+    const pose = motion.pose(t.id) ?? { ...t.position, heading: t.headingDeg }
     const moving = isExtrapolating(t, now)
     if (moving && t.speedKmh) maxSpeed = Math.max(maxSpeed, t.speedKmh)
     points.push({
@@ -98,8 +127,16 @@ export function buildFrame({ tracks, motion, now, selected }: FrameInput) {
             [ahead.lon, ahead.lat],
           ],
         },
-        properties: { color: THREAT_COLORS[t.type] },
+        properties: { color },
       })
+      const cone = trackCone(t, now, pose)
+      if (cone) {
+        cones.push({
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: [cone] },
+          properties: { color, selected: t.id === selected },
+        })
+      }
     }
     if (t.id === selected) {
       // Uncertainty grows while dead-reckoning without fresh reports.
@@ -108,5 +145,5 @@ export function buildFrame({ tracks, motion, now, selected }: FrameInput) {
       selectedPose = { lat: pose.lat, lon: pose.lon, uncertaintyKm: t.uncertaintyKm + growth }
     }
   }
-  return { points, vectors, targets, maxSpeed, selectedPose }
+  return { points, vectors, targets, cones, impacts, predicted, maxSpeed, selectedPose }
 }

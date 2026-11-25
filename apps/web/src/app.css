@@ -6,6 +6,7 @@
   --panel: rgb(255 255 255 / 0.86);
   --panel-solid: #ffffff;
   --chip: #eef1f5;
+  --chip-strong: #e1e6ee;
   --accent: #f5a524;
   --danger: #e5262b;
   --ok: #22c55e;
@@ -22,6 +23,7 @@
     --panel: rgb(17 25 40 / 0.82);
     --panel-solid: #111928;
     --chip: #1b2537;
+    --chip-strong: #26324a;
     --danger: #ff453a;
     --ok: #30d158;
     --link: #64a8ff;
@@ -37,6 +39,7 @@
   --panel: rgb(17 25 40 / 0.82);
   --panel-solid: #111928;
   --chip: #1b2537;
+  --chip-strong: #26324a;
   --danger: #ff453a;
   --ok: #30d158;
   --link: #64a8ff;

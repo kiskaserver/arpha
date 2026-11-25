@@ -155,6 +155,7 @@ describe('runtime', () => {
       extract: async () => ({
         relevant: true,
         all_clear: false,
+        closures: [{ object: 'Мости', status: 'closed' as const }],
         events: [event({ location: 'Балабине', toward: 'Запоріжжя' })],
       }),
     }
@@ -178,7 +179,7 @@ describe('runtime', () => {
       method: 'POST',
       body: JSON.stringify({
         subscription: { endpoint: 'https://push.example/1', keys: { p256dh: 'p', auth: 'a' } },
-        point: ZAPORIZHZHIA,
+        points: [{ name: 'Дім', ...ZAPORIZHZHIA }],
       }),
     })
     await new Promise((r) => setTimeout(r, 10))
@@ -187,6 +188,14 @@ describe('runtime', () => {
     const t = rt.tracker.active()[0]!
     expect(haversineKm(predictPosition(t, min(1))!, ZAPORIZHZHIA)).toBeLessThan(25)
     expect(published).toContain('track')
+    expect(published).toContain('feed')
+    expect(published).toContain('infra')
+    expect(t.prediction?.targets.length).toBeGreaterThan(0)
+    const state = await json(rt.app.request('/api/state'))
+    expect(state.infra[0]).toMatchObject({ name: 'Мости Преображенського', status: 'closed' })
+    expect(state.feed[0]).toMatchObject({ channel: 'test_channel', types: ['shahed'] })
+    const hot = await json(rt.app.request('/api/hotspots?days=7'))
+    expect(hot[0]).toMatchObject({ name: 'Балабине', count: 1 })
     await vi.waitFor(() => expect(send).toHaveBeenCalled())
     expect((await json(rt.app.request('/api/push/key'))).publicKey).toBe('pub')
     const health = await json(rt.app.request('/api/health'))

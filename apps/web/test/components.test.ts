@@ -19,6 +19,8 @@ const track = (o: Partial<Track> = {}): Track => ({
   uncertaintyKm: 3,
   placeName: 'Балабине',
   target: { name: 'Запоріжжя', ...ZAPORIZHZHIA },
+  origin: null,
+  prediction: null,
   confidence: 0.8,
   sources: [
     {
@@ -41,6 +43,8 @@ describe('TopBar', () => {
     locationType: 'oblast' as const,
     locationUid: '12',
     alertType: 'air_raid',
+    level: 'red',
+    threats: [{ type: 'guided_aerial_bombs', level: 'red', startedAt: NOW, message: null }],
     startedAt: NOW,
     featureIds: ['r71980'],
   }
@@ -51,9 +55,11 @@ describe('TopBar', () => {
     expect(chip.textContent).toContain('Повітряна тривога')
     expect(screen.getByText('Демо')).toBeTruthy()
     await fireEvent.click(chip)
-    expect(screen.getByRole('list', { name: 'Тривоги в області' }).textContent).toContain(
-      'Запорізька область',
-    )
+    const list = screen.getByRole('list', { name: 'Тривоги в області' })
+    expect(list.textContent).toContain('Запорізька область')
+    expect(list.textContent).toContain('червоний рівень')
+    expect(list.textContent).toContain('КАБи')
+    expect(chip.textContent).toContain('КАБи')
   })
 
   it('shows calm and offline states', () => {
@@ -82,7 +88,7 @@ describe('ThreatPanel', () => {
       NOW,
       10,
     )
-    render(ThreatPanel, { rows, selected: null, now: NOW, onselect })
+    render(ThreatPanel, { rows, feed: [], selected: null, now: NOW, onselect })
     expect(screen.getByTestId('threat-count').textContent).toContain('1 загроза')
     const items = screen.getAllByTestId('threat-row')
     expect(items).toHaveLength(2)
@@ -94,13 +100,13 @@ describe('ThreatPanel', () => {
   })
 
   it('empty state', () => {
-    render(ThreatPanel, { rows: [], selected: null, now: NOW, onselect: vi.fn() })
+    render(ThreatPanel, { rows: [], feed: [], selected: null, now: NOW, onselect: vi.fn() })
     expect(screen.getAllByText('Активних загроз не зафіксовано').length).toBeGreaterThan(0)
   })
 
   it('shows the card for the selected threat', () => {
     const rows = threatRows([track()], ZAPORIZHZHIA, NOW, 10)
-    render(ThreatPanel, { rows, selected: 't1', now: NOW, onselect: vi.fn() })
+    render(ThreatPanel, { rows, feed: [], selected: 't1', now: NOW, onselect: vi.fn() })
     expect(screen.getByTestId('threat-card')).toBeTruthy()
   })
 })
@@ -114,7 +120,7 @@ describe('ThreatCard', () => {
     expect(screen.getByTestId('card-eta').textContent).toBe('~10 хв')
     expect(screen.getByText('~180 км/год')).toBeTruthy()
     expect(screen.getByText('пн (0°)')).toBeTruthy()
-    const link = screen.getByRole('link', { name: 'ЗП Монітор' }) as HTMLAnchorElement
+    const link = screen.getByRole('link', { name: /ЗП Монітор/ }) as HTMLAnchorElement
     expect(link.href).toBe('https://t.me/zp_monitor/77')
     expect(link.rel).toContain('noopener')
     await fireEvent.click(screen.getByRole('button', { name: 'Закрити' }))

@@ -51,6 +51,8 @@ export interface TrackState {
 }
 
 export interface TrackerHooks {
+  /** Forecast attached to every published state (see predict/predictor.ts). */
+  predict?(track: Track, now: number): Track['prediction']
   onChange?(track: Track, state: TrackState): void
   onRemove?(id: string): void
 }
@@ -62,6 +64,8 @@ const BASE_GATE_KM = 20
 const DESTROYED_LINGER_MS = 90_000
 const LOST_LINGER_MS = 60_000
 const MAX_SOURCES = 6
+/** Weapons whose "lost"/"впали" means they hit the ground. */
+const IMPACTING = new Set<ThreatType>(['kab', 'ballistic', 'cruise_missile', 'mlrs', 'artillery'])
 const frame = localFrame(ZAPORIZHZHIA)
 
 interface Observation {
@@ -150,12 +154,25 @@ export class Tracker {
     // A ballistic warning names what is threatened, never where the missile is.
     const ev: ResolvedEvent =
       raw.type === 'ballistic' && raw.locationPlace && !raw.towardPlace
-        ? { ...raw, towardPlace: raw.locationPlace, locationPlace: null, fromPlace: null }
+        ? { ...raw, towardPlace: raw.locationPlace, locationPlace: null }
         : raw
     const obs = this.#observation(ev)
     const state = this.#associate(ev, ctx, obs?.point ?? null, used)
 
     if (ev.action === 'destroyed' || ev.action === 'lost') {
+      // "Впали каби" / a missile that "lost" over a place = it hit there: mark the impact.
+      const impact = ev.action === 'lost' && IMPACTING.has(ev.type)
+      const where = obs?.point ?? state?.track.position ?? null
+      if (impact && where && obs) {
+        this.#create({ ...ev, type: 'explosion', action: 'new', track_id: null }, ctx, obs)
+      } else if (impact && where && state?.track.placeName) {
+        const name = state.track.placeName
+        this.#create({ ...ev, type: 'explosion', action: 'new', track_id: null }, ctx, {
+          point: where,
+          sigma: state.track.uncertaintyKm || 2,
+          name,
+        })
+      }
       if (!state) return null // nothing to kill; never spawn a dead track
       if (
         ev.action === 'destroyed' &&
@@ -180,7 +197,8 @@ export class Tracker {
   }
 
   #observation(ev: ResolvedEvent): Observation | null {
-    const place = ev.locationPlace ?? ev.fromPlace
+    // A ballistic "з Криму" is a direction of origin, never a position.
+    const place = ev.locationPlace ?? (ev.type === 'ballistic' ? null : ev.fromPlace)
     if (!place) return null
     const precision = ev.locationPlace ? ev.precision : 'near'
     return {
@@ -288,6 +306,8 @@ export class Tracker {
       uncertaintyKm: obs?.sigma ?? 0,
       placeName: obs?.name ?? null,
       target: toTarget(ev.towardPlace),
+      origin: toTarget(ev.fromPlace),
+      prediction: null,
       confidence: ev.confidence,
       sources: [],
       createdAt: now,
@@ -348,6 +368,7 @@ export class Tracker {
       uncertaintyKm: obs && !profile.moving ? obs.sigma : state.track.uncertaintyKm,
       placeName: obs?.name ?? state.track.placeName,
       target,
+      origin: toTarget(ev.fromPlace) ?? state.track.origin,
     }
     if (obs) state.lastObsAt = Math.max(state.lastObsAt, ctx.observedAt)
     this.#refresh(state)
@@ -393,7 +414,7 @@ export class Tracker {
       confidence: Math.min(0.99, Math.max(state.track.confidence, ev.confidence) + corroboration),
       updatedAt: Math.max(state.track.updatedAt, ctx.observedAt),
     }
-    this.#hooks.onChange?.(state.track, state)
+    this.#emit(state, ctx.observedAt)
   }
 
   #setStatus(
@@ -417,7 +438,12 @@ export class Tracker {
       updatedAt: now,
     }
     if (ev && ctx) this.#touch(state, ev, ctx)
-    else this.#hooks.onChange?.(state.track, state)
+    else this.#emit(state, now)
+  }
+
+  #emit(state: TrackState, now: number): void {
+    state.track = { ...state.track, prediction: this.#hooks.predict?.(state.track, now) ?? null }
+    this.#hooks.onChange?.(state.track, state)
   }
 
   snapshot(): TrackState[] {

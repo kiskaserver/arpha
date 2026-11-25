@@ -1,8 +1,9 @@
 import { resolve } from 'node:path'
 import { destination, type Track, ZAPORIZHZHIA } from '@arpha/shared'
+import { pushSubscriptionSchema } from '@arpha/shared/schemas'
 import { describe, expect, it, vi } from 'vitest'
 import { Boundaries } from '../src/alerts/boundaries'
-import { parseAlerts } from '../src/alerts/service'
+import { NO_DIFF, parseAlerts } from '../src/alerts/service'
 import { Store } from '../src/db'
 import { silentLogger } from '../src/logger'
 import { PushGoneError, type PushSender, PushService } from '../src/push/service'
@@ -11,6 +12,7 @@ import { min } from './helpers'
 const boundaries = Boundaries.load(
   resolve(import.meta.dirname, '../../web/public/boundaries.geojson'),
 )
+const BERDIANSK = { lat: 46.75, lon: 36.78 }
 
 function setup(send: PushSender = vi.fn(async () => {})) {
   const store = new Store(':memory:')
@@ -19,13 +21,13 @@ function setup(send: PushSender = vi.fn(async () => {})) {
   return { svc, store, send: send as ReturnType<typeof vi.fn>, setNow: (n: number) => (now = n) }
 }
 
-const sub = (endpoint: string, point: { lat: number; lon: number } | null = ZAPORIZHZHIA) => ({
-  subscription: { endpoint, keys: { p256dh: 'p', auth: 'a' } },
-  point,
-  radiusKm: 10,
-  alerts: true,
-  threats: true,
-})
+const sub = (endpoint: string, extra: Record<string, unknown> = {}) =>
+  pushSubscriptionSchema.parse({
+    subscription: { endpoint, keys: { p256dh: 'p', auth: 'a' } },
+    points: [{ name: 'Дім', ...ZAPORIZHZHIA }],
+    radiusKm: 10,
+    ...extra,
+  })
 
 const incoming = (overrides: Partial<Track> = {}): Track => ({
   id: 't1',
@@ -39,6 +41,8 @@ const incoming = (overrides: Partial<Track> = {}): Track => ({
   uncertaintyKm: 2,
   placeName: 'Балабине',
   target: null,
+  origin: null,
+  prediction: null,
   confidence: 0.8,
   sources: [],
   createdAt: min(0),
@@ -46,7 +50,7 @@ const incoming = (overrides: Partial<Track> = {}): Track => ({
   ...overrides,
 })
 
-const alert = (id: number, type: string, title: string) =>
+const alert = (id: number, type: string, title: string, threats: unknown[] = []) =>
   parseAlerts(
     {
       alerts: [
@@ -58,6 +62,7 @@ const alert = (id: number, type: string, title: string) =>
           location_oblast: 'Запорізька область',
           alert_type: 'air_raid',
           started_at: '2026-11-25T00:00:00Z',
+          threats,
         },
       ],
     },
@@ -65,68 +70,155 @@ const alert = (id: number, type: string, title: string) =>
   )[0]!
 
 describe('PushService', () => {
-  it('rounds the point and resolves its polygons; persists and reloads', () => {
+  it('rounds points, resolves their polygons; persists, reloads and migrates', () => {
     const { svc, store } = setup()
-    const s = svc.subscribe(sub('https://push/1', { lat: 47.83881234, lon: 35.13961234 }))
-    expect(s.point).toEqual({ lat: 47.84, lon: 35.14 })
-    expect(s.featureIds.length).toBe(3)
+    const s = svc.subscribe(
+      sub('https://push/1', { points: [{ name: 'Дім', lat: 47.83881234, lon: 35.13961234 }] }),
+    )
+    expect(s.points[0]).toMatchObject({ name: 'Дім', lat: 47.84, lon: 35.14 })
+    expect(s.points[0]!.featureIds).toHaveLength(3)
+    // A subscription stored by the previous version (single point).
+    store.saveSubscription('https://push/old', {
+      subscription: { endpoint: 'https://push/old', keys: { p256dh: 'p', auth: 'a' } },
+      point: ZAPORIZHZHIA,
+      featureIds: ['r71980'],
+      radiusKm: 10,
+      alerts: true,
+      threats: true,
+    })
     const reloaded = new PushService({ store, boundaries, send: vi.fn(), logger: silentLogger })
-    expect(reloaded.size).toBe(1)
+    expect(reloaded.size).toBe(2)
     reloaded.unsubscribe('https://push/1')
-    expect(reloaded.size).toBe(0)
+    expect(reloaded.size).toBe(1)
   })
 
-  it('notifies about alerts covering the subscriber only', async () => {
+  it('legacy single `point` input becomes a named point', () => {
+    const parsed = pushSubscriptionSchema.parse({
+      subscription: { endpoint: 'https://x/1', keys: { p256dh: 'p', auth: 'a' } },
+      point: ZAPORIZHZHIA,
+    })
+    expect(parsed.points).toEqual([{ ...ZAPORIZHZHIA, name: 'Моя точка' }])
+    expect(parsed.classes).toContain('kab')
+  })
+
+  it('notifies about alerts covering one of the points, naming it and the official threats', async () => {
     const { svc, send } = setup()
     svc.subscribe(sub('https://push/city'))
-    svc.subscribe(sub('https://push/far', { lat: 46.75, lon: 36.78 })) // Berdiansk
-    await svc.onAlerts({
-      started: [alert(1, 'city', 'м. Запоріжжя та Запорізька територіальна громада')],
-      ended: [],
-    })
+    svc.subscribe(sub('https://push/far', { points: [{ name: 'Дача', ...BERDIANSK }] }))
+    const a = alert(1, 'city', 'м. Запоріжжя', [
+      { threat_type: 'guided_aerial_bombs', level: 'red', started_at: '2026-11-25T00:00:00Z' },
+    ])
+    await svc.onAlerts({ ...NO_DIFF, started: [a] })
     expect(send).toHaveBeenCalledOnce()
-    expect(send.mock.calls[0]![0].endpoint).toBe('https://push/city')
-    expect(send.mock.calls[0]![1].title).toContain('Повітряна тривога')
+    const [target, payload] = send.mock.calls[0]!
+    expect(target.endpoint).toBe('https://push/city')
+    expect(payload).toMatchObject({ title: '🚨 Повітряна тривога · Дім', kind: 'alert' })
+    expect(payload.body).toContain('КАБи')
 
-    await svc.onAlerts({
-      started: [],
-      ended: [alert(1, 'city', 'м. Запоріжжя та Запорізька територіальна громада')],
-    })
-    expect(send.mock.calls[1]![1].title).toContain('Відбій')
+    await svc.onAlerts({ ...NO_DIFF, ended: [a] })
+    expect(send.mock.calls[1]![1]).toMatchObject({ title: '✅ Відбій тривоги', kind: 'clear' })
   })
 
-  it('without a point only oblast-wide alerts are sent', async () => {
+  it('a new official threat on an active alert (ballistic) is pushed if its class is enabled', async () => {
     const { svc, send } = setup()
-    svc.subscribe(sub('https://push/x', null))
-    await svc.onAlerts({ started: [alert(2, 'raion', 'Пологівський район')], ended: [] })
+    svc.subscribe(sub('https://push/1'))
+    svc.subscribe(sub('https://push/2', { classes: ['drones'] }))
+    const a = alert(1, 'oblast', 'Запорізька область')
+    await svc.onAlerts({
+      ...NO_DIFF,
+      threatsAdded: [
+        {
+          alert: a,
+          threat: {
+            type: 'ballistic_missiles',
+            level: 'red',
+            startedAt: 0,
+            message: 'Загроза балістики',
+          },
+        },
+      ],
+    })
+    expect(send).toHaveBeenCalledOnce()
+    expect(send.mock.calls[0]![1]).toMatchObject({ title: '🚀 Балістика', kind: 'ballistic' })
+  })
+
+  it('without points only oblast-wide alerts are sent', async () => {
+    const { svc, send } = setup()
+    svc.subscribe(sub('https://push/x', { points: [] }))
+    await svc.onAlerts({ ...NO_DIFF, started: [alert(2, 'raion', 'Пологівський район')] })
     expect(send).not.toHaveBeenCalled()
-    await svc.onAlerts({ started: [alert(3, 'oblast', 'Запорізька область')], ended: [] })
+    await svc.onAlerts({ ...NO_DIFF, started: [alert(3, 'oblast', 'Запорізька область')] })
     expect(send).toHaveBeenCalledOnce()
   })
 
-  it('warns about an incoming threat once per 10 min', async () => {
+  it('warns about an incoming threat once per 10 min, naming the nearest point', async () => {
     const { svc, send, setNow } = setup()
-    svc.subscribe(sub('https://push/1'))
+    svc.subscribe(
+      sub('https://push/1', {
+        points: [
+          { name: 'Робота', ...BERDIANSK },
+          { name: 'Дім', ...ZAPORIZHZHIA },
+        ],
+      }),
+    )
     await svc.onTrack(incoming())
     await svc.onTrack(incoming())
     expect(send).toHaveBeenCalledOnce()
     const payload = send.mock.calls[0]![1]
-    expect(payload.title).toBe('⚠️ Шахеди ×2 у ваш бік')
+    expect(payload.title).toBe('⚠️ Шахеди ×2 → Дім')
     expect(payload.body).toMatch(/^~10 хв, 40 км · біля Балабине$/)
     expect(payload.url).toBe('/?track=t1')
     setNow(min(11))
-    await svc.onTrack(incoming({ stateAt: min(11), position: destination(ZAPORIZHZHIA, 180, 40) }))
+    await svc.onTrack(incoming({ stateAt: min(11) }))
     expect(send).toHaveBeenCalledTimes(2)
   })
 
-  it('skips receding, inactive, far-future and opted-out cases', async () => {
+  it('respects per-class filters', async () => {
+    const { svc, send } = setup()
+    svc.subscribe(sub('https://push/1', { classes: ['kab'] }))
+    await svc.onTrack(incoming())
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('ballistic warning near a point includes the launch direction', async () => {
     const { svc, send } = setup()
     svc.subscribe(sub('https://push/1'))
-    svc.subscribe({ ...sub('https://push/2'), threats: false })
-    svc.subscribe(sub('https://push/3', null))
+    await svc.onTrack(
+      incoming({
+        type: 'ballistic',
+        position: null,
+        speedKmh: null,
+        headingDeg: null,
+        target: { name: 'Запоріжжя', ...ZAPORIZHZHIA },
+        origin: { name: 'Крим', lat: 45.6, lon: 34.3 },
+      }),
+    )
+    const payload = send.mock.calls[0]![1]
+    expect(payload).toMatchObject({ title: '🚀 Загроза балістики · Дім', kind: 'ballistic' })
+    expect(payload.body).toContain('з боку Крим')
+    // Far from the target: no warning.
+    const far = setup()
+    far.svc.subscribe(sub('https://push/2', { points: [{ name: 'Дача', ...BERDIANSK }] }))
+    await far.svc.onTrack(
+      incoming({
+        type: 'ballistic',
+        position: null,
+        target: { name: 'Запоріжжя', ...ZAPORIZHZHIA },
+      }),
+    )
+    expect(far.send).not.toHaveBeenCalled()
+  })
+
+  it('skips receding, inactive, far-future, explosion and opted-out cases', async () => {
+    const { svc, send } = setup()
+    svc.subscribe(sub('https://push/1'))
+    svc.subscribe(sub('https://push/2', { threats: false }))
+    svc.subscribe(sub('https://push/3', { points: [] }))
     await svc.onTrack(incoming({ headingDeg: 180 }))
     await svc.onTrack(incoming({ status: 'destroyed' }))
+    await svc.onTrack(incoming({ type: 'explosion' }))
     await svc.onTrack(incoming({ id: 't2', position: destination(ZAPORIZHZHIA, 180, 400) }))
+    await svc.onTrack(incoming({ id: 't3', type: 'ballistic', position: null, target: null }))
     expect(send).not.toHaveBeenCalled()
   })
 
@@ -144,19 +236,19 @@ describe('PushService', () => {
       .mockRejectedValueOnce(new Error('network'))
     const { svc } = setup(send)
     svc.subscribe(sub('https://push/gone'))
-    await svc.onAlerts({ started: [alert(3, 'oblast', 'Запорізька область')], ended: [] })
+    await svc.onAlerts({ ...NO_DIFF, started: [alert(3, 'oblast', 'Запорізька область')] })
     expect(svc.size).toBe(0)
     svc.subscribe(sub('https://push/flaky'))
     await expect(
-      svc.onAlerts({ started: [alert(4, 'oblast', 'Запорізька область')], ended: [] }),
+      svc.onAlerts({ ...NO_DIFF, started: [alert(4, 'oblast', 'Запорізька область')] }),
     ).resolves.toBeUndefined()
     expect(svc.size).toBe(1)
   })
 
   it('ignores subscribers who opted out of alerts', async () => {
     const { svc, send } = setup()
-    svc.subscribe({ ...sub('https://push/1'), alerts: false })
-    await svc.onAlerts({ started: [alert(3, 'oblast', 'Запорізька область')], ended: [] })
+    svc.subscribe(sub('https://push/1', { alerts: false }))
+    await svc.onAlerts({ ...NO_DIFF, started: [alert(3, 'oblast', 'Запорізька область')] })
     expect(send).not.toHaveBeenCalled()
   })
 })

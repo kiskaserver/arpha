@@ -1,31 +1,57 @@
-import type { ActiveAlert, AlertLocationType, AlertsState } from '@arpha/shared'
+import type { ActiveAlert, AlertLocationType, AlertsState, OfficialThreat } from '@arpha/shared'
 import { z } from 'zod'
 import type { Logger } from '../logger'
 
+/** https://devs.alerts.in.ua — one request returns every active alert in Ukraine. */
 export const ALERTS_API = 'https://api.alerts.in.ua/v1/alerts/active.json'
 export const OBLAST_TITLE = 'Запорізька область'
 export const OBLAST_UID = '12'
+
+const idLike = z.union([z.string(), z.number()])
+
+const threatSchema = z.object({
+  threat_type: z.string(),
+  level: z.string().nullish(),
+  started_at: z.string().nullish(),
+  finished_at: z.string().nullish(),
+  source_message: z.string().nullish(),
+})
 
 const alertSchema = z.object({
   id: z.number(),
   location_title: z.string(),
   location_type: z.string(),
-  location_uid: z.union([z.string(), z.number()]).transform(String),
+  location_uid: idLike.transform(String),
   location_oblast: z.string().nullish(),
-  location_oblast_uid: z
-    .union([z.string(), z.number()])
-    .nullish()
-    .transform((v) => (v == null ? null : String(v))),
+  location_oblast_uid: idLike.nullish().transform((v) => (v == null ? null : String(v))),
   alert_type: z.string(),
+  alert_level: z.string().nullish(),
   started_at: z.string(),
   finished_at: z.string().nullish(),
+  threats: z.array(z.unknown()).nullish(),
 })
 
 const responseSchema = z.object({ alerts: z.array(z.unknown()) })
 
 const LOCATION_TYPES: AlertLocationType[] = ['oblast', 'raion', 'hromada', 'city']
 
-/** Keep only alerts in Zaporizhzhia oblast; skip malformed items instead of failing the batch. */
+function parseThreats(raw: unknown[] | null | undefined): OfficialThreat[] {
+  const out: OfficialThreat[] = []
+  for (const t of raw ?? []) {
+    const parsed = threatSchema.safeParse(t)
+    if (!parsed.success || parsed.data.finished_at) continue
+    const d = parsed.data
+    out.push({
+      type: d.threat_type,
+      level: d.level ?? null,
+      startedAt: d.started_at ? Date.parse(d.started_at) : 0,
+      message: d.source_message ?? null,
+    })
+  }
+  return out
+}
+
+/** Keep only alerts in Zaporizhzhia oblast (every alert type); skip malformed items. */
 export function parseAlerts(
   body: unknown,
   match: (a: Pick<ActiveAlert, 'locationTitle' | 'locationType'>) => string[] = () => [],
@@ -47,6 +73,8 @@ export function parseAlerts(
       locationType,
       locationUid: a.location_uid,
       alertType: a.alert_type,
+      level: a.alert_level ?? null,
+      threats: parseThreats(a.threats),
       startedAt: Date.parse(a.started_at),
       featureIds: match({ locationTitle: a.location_title, locationType }),
     })
@@ -57,46 +85,75 @@ export function parseAlerts(
 export interface AlertsDiff {
   started: ActiveAlert[]
   ended: ActiveAlert[]
+  /** New official threat types on alerts that were already active (e.g. ballistic added). */
+  threatsAdded: { alert: ActiveAlert; threat: OfficialThreat }[]
 }
 
+export const NO_DIFF: AlertsDiff = { started: [], ended: [], threatsAdded: [] }
+
 export function diffAlerts(prev: ActiveAlert[], next: ActiveAlert[]): AlertsDiff {
-  const prevIds = new Set(prev.map((a) => a.id))
+  const prevById = new Map(prev.map((a) => [a.id, a]))
   const nextIds = new Set(next.map((a) => a.id))
+  const threatsAdded: AlertsDiff['threatsAdded'] = []
+  for (const a of next) {
+    const before = prevById.get(a.id)
+    if (!before) continue
+    const known = new Set(before.threats.map((t) => t.type))
+    for (const t of a.threats) if (!known.has(t.type)) threatsAdded.push({ alert: a, threat: t })
+  }
   return {
-    started: next.filter((a) => !prevIds.has(a.id)),
+    started: next.filter((a) => !prevById.has(a.id)),
     ended: prev.filter((a) => !nextIds.has(a.id)),
+    threatsAdded,
   }
 }
 
+const signature = (alerts: ActiveAlert[]) =>
+  alerts
+    .map((a) => `${a.id}:${a.level}:${a.threats.map((t) => `${t.type}/${t.level}`).join(',')}`)
+    .join('|')
+
 export interface AlertsServiceOptions {
-  token?: string
+  token?: string | undefined
   pollMs: number
   logger: Logger
   fetch?: typeof fetch
   now?: () => number
+  random?: () => number
   /** Maps an alert location to boundary polygon ids. */
   match?: (a: Pick<ActiveAlert, 'locationTitle' | 'locationType'>) => string[]
   onChange?(state: AlertsState, diff: AlertsDiff): void
 }
 
+/** After 401/403 the token is wrong or blocked; hammering would only make it worse. */
+const AUTH_PAUSE_MS = 15 * 60_000
+/** On 429 without Retry-After. */
+const RATE_LIMIT_PAUSE_MS = 2 * 60_000
+
 /**
- * Polls alerts.in.ua. Respects Last-Modified (the API supports conditional
- * requests, which don't count much toward the rate limit) and backs off on errors.
+ * Polls alerts.in.ua politely: the token may be shared with another project and
+ * the API blocks abusers (soft limit 8–10 req/min per IP). We use one request
+ * per ~30 s with ±15 % jitter, conditional requests (If-Modified-Since → 304),
+ * honour Retry-After on 429, pause on auth errors and back off exponentially.
  */
 export class AlertsService {
   readonly #o: AlertsServiceOptions
   readonly #fetch: typeof fetch
   readonly #now: () => number
+  readonly #random: () => number
   #state: AlertsState
   #lastModified: string | null = null
   #timer: NodeJS.Timeout | null = null
   #running = false
   #failures = 0
+  /** Earliest time the next request may be sent. */
+  #pauseUntil = 0
 
   constructor(opts: AlertsServiceOptions) {
     this.#o = opts
     this.#fetch = opts.fetch ?? fetch
     this.#now = opts.now ?? Date.now
+    this.#random = opts.random ?? Math.random
     this.#state = { alerts: [], updatedAt: 0, stale: true }
   }
 
@@ -113,17 +170,34 @@ export class AlertsService {
     this.#apply(alerts)
   }
 
+  /** Delay before the next poll, ms. */
+  nextDelay(): number {
+    const jitter = 1 + (this.#random() * 2 - 1) * 0.15
+    const backoff = Math.min(2 ** this.#failures, 8)
+    const base = this.#o.pollMs * backoff * jitter
+    return Math.max(base, this.#pauseUntil - this.#now())
+  }
+
   async poll(): Promise<void> {
-    if (!this.#o.token) return
+    const token = this.#o.token
+    if (!token || this.#now() < this.#pauseUntil) return
     try {
-      const headers: Record<string, string> = { Authorization: `Bearer ${this.#o.token}` }
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
       if (this.#lastModified) headers['If-Modified-Since'] = this.#lastModified
       const res = await this.#fetch(ALERTS_API, { headers, signal: AbortSignal.timeout(10_000) })
       if (res.status === 304) {
         this.#failures = 0
-        if (this.#state.stale)
-          this.#publish({ ...this.#state, stale: false }, { started: [], ended: [] })
+        if (this.#state.stale) this.#publish({ ...this.#state, stale: false }, NO_DIFF)
         return
+      }
+      if (res.status === 429) {
+        const retry = Number(res.headers.get('retry-after'))
+        this.#pauseUntil = this.#now() + (retry > 0 ? retry * 1000 : RATE_LIMIT_PAUSE_MS)
+        throw new Error('alerts.in.ua rate limit (429)')
+      }
+      if (res.status === 401 || res.status === 403) {
+        this.#pauseUntil = this.#now() + AUTH_PAUSE_MS
+        throw new Error(`alerts.in.ua rejected the token (${res.status})`)
       }
       if (!res.ok) throw new Error(`alerts.in.ua HTTP ${res.status}`)
       this.#lastModified = res.headers.get('last-modified')
@@ -133,7 +207,7 @@ export class AlertsService {
       this.#failures++
       this.#o.logger.warn({ err, failures: this.#failures }, 'alerts poll failed')
       if (this.#failures >= 3 && !this.#state.stale) {
-        this.#publish({ ...this.#state, stale: true }, { started: [], ended: [] })
+        this.#publish({ ...this.#state, stale: true }, NO_DIFF)
       }
     }
   }
@@ -144,8 +218,7 @@ export class AlertsService {
     const loop = async () => {
       await this.poll()
       if (!this.#running) return
-      const backoff = Math.min(2 ** this.#failures, 8)
-      this.#timer = setTimeout(loop, this.#o.pollMs * backoff)
+      this.#timer = setTimeout(loop, this.nextDelay())
     }
     void loop()
   }
@@ -157,12 +230,12 @@ export class AlertsService {
   }
 
   #apply(alerts: ActiveAlert[]): void {
-    const diff = diffAlerts(this.#state.alerts, alerts)
-    const changed = diff.started.length > 0 || diff.ended.length > 0 || this.#state.stale
+    const changed = this.#state.stale || signature(alerts) !== signature(this.#state.alerts)
     if (!changed) {
       this.#state = { ...this.#state, updatedAt: this.#now() }
       return
     }
+    const diff = diffAlerts(this.#state.alerts, alerts)
     this.#publish({ alerts, updatedAt: this.#now(), stale: false }, diff)
   }
 

@@ -58,9 +58,24 @@ export const extractedEventSchema = z.object({
   confidence: z.coerce.number().min(0).max(1).catch(0.5),
 })
 
+export const closureSchema = z.object({
+  object: z.string().min(2),
+  status: z.enum(['closed', 'open']),
+})
+
 export const extractionSchema = z.object({
   relevant: z.boolean().catch(false),
   all_clear: z.boolean().catch(false),
+  closures: z
+    .array(z.unknown())
+    .catch([])
+    .default([])
+    .transform((items) =>
+      items.flatMap((item) => {
+        const parsed = closureSchema.safeParse(item)
+        return parsed.success ? [parsed.data] : []
+      }),
+    ),
   events: z
     .array(z.unknown())
     .catch([])
@@ -104,4 +119,9 @@ export interface Extractor {
   extract(input: ExtractionInput): Promise<Extraction>
 }
 
-export const EMPTY_EXTRACTION: Extraction = { relevant: false, all_clear: false, events: [] }
+export const EMPTY_EXTRACTION: Extraction = {
+  relevant: false,
+  all_clear: false,
+  closures: [],
+  events: [],
+}

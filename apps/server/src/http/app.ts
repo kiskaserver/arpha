@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import type { AlertsState, StreamEvent, Track } from '@arpha/shared'
+import type { AlertsState, FeedItem, Hotspot, InfraStatus, StreamEvent, Track } from '@arpha/shared'
 import { pushSubscriptionSchema } from '@arpha/shared/schemas'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
@@ -16,6 +16,9 @@ import type { PushService } from '../push/service'
 export interface AppDeps {
   tracks: () => Track[]
   alerts: () => AlertsState
+  infra?: () => InfraStatus[]
+  feed?: () => FeedItem[]
+  hotspots?: (days: number) => Hotspot[]
   bus: EventBus
   logger: Logger
   demo: boolean
@@ -82,6 +85,8 @@ export function createApp(d: AppDeps): Hono {
     type: 'snapshot',
     tracks: d.tracks(),
     alerts: d.alerts(),
+    infra: d.infra?.() ?? [],
+    feed: d.feed?.() ?? [],
     serverTime: now(),
     demo: d.demo,
   })
@@ -127,6 +132,16 @@ export function createApp(d: AppDeps): Hono {
     })
   })
 
+  let hotspotCache: { at: number; days: number; data: Hotspot[] } | null = null
+  app.get('/api/hotspots', (c) => {
+    const days = Math.min(90, Math.max(1, Number(c.req.query('days')) || 30))
+    if (!hotspotCache || hotspotCache.days !== days || now() - hotspotCache.at > 5 * 60_000) {
+      hotspotCache = { at: now(), days, data: d.hotspots?.(days) ?? [] }
+    }
+    c.header('Cache-Control', 'public, max-age=300')
+    return c.json(hotspotCache.data)
+  })
+
   app.get('/api/push/key', (c) =>
     d.push ? c.json({ publicKey: d.push.publicKey }) : c.json({ error: 'push disabled' }, 404),
   )
@@ -136,7 +151,10 @@ export function createApp(d: AppDeps): Hono {
     const parsed = pushSubscriptionSchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ error: 'invalid subscription' }, 400)
     const sub = d.push.service.subscribe(parsed.data)
-    return c.json({ ok: true, featureIds: sub.featureIds }, 201)
+    return c.json(
+      { ok: true, points: sub.points.map((p) => ({ name: p.name, featureIds: p.featureIds })) },
+      201,
+    )
   })
 
   app.post('/api/push/unsubscribe', bodyLimit({ maxSize: 4 * 1024 }), async (c) => {

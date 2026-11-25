@@ -52,7 +52,13 @@ export function alertLevel(alerts: AlertsState, myFeatureIds: string[]): AlertLe
   return mine ? 'mine' : 'region'
 }
 
-/** Feature ids under alert, for map highlighting. */
-export function alertedFeatureIds(alerts: AlertsState): Set<string> {
-  return new Set(alerts.alerts.flatMap((a) => a.featureIds))
+/** featureId → alert type, for map highlighting. Air raid wins over other kinds. */
+export function alertedFeatures(alerts: AlertsState): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const a of alerts.alerts) {
+    for (const id of a.featureIds) {
+      if (!out.has(id) || a.alertType === 'air_raid') out.set(id, a.alertType)
+    }
+  }
+  return out
 }

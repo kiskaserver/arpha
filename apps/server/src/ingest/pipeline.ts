@@ -16,7 +16,16 @@ export interface MessageSource {
   getMessage(channel: string, id: number): Promise<RawMessage | null>
 }
 
+export interface ProcessedMessage {
+  message: RawMessage
+  extraction: Extraction
+  resolved: ResolvedEvent[]
+  trackIds: string[]
+}
+
 export interface PipelineDeps {
+  /** Called for every relevant message after fusion (feed, infra, history). */
+  onProcessed?(p: ProcessedMessage): void
   store: Store
   extractor: Extractor
   gazetteer: Gazetteer
@@ -136,6 +145,7 @@ export class Pipeline {
 
       const trackIds = [...new Set(ids.filter((id): id is string => id !== null))]
       save(extraction, trackIds)
+      this.#d.onProcessed?.({ message: msg, extraction, resolved, trackIds })
       this.#stats.processed++
       this.#stats.events += extraction.events.length
       log.info(

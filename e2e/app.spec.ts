@@ -70,7 +70,7 @@ test.describe('Арфа', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
     await dialog.locator('#radius').fill('25')
     await expect(dialog).toContainText('25 км')
-    await dialog.getByRole('button', { name: 'Вибрати на карті' }).click()
+    await dialog.getByRole('button', { name: '+ На карті' }).click()
     const hint = page.getByText('Торкніться карти, щоб поставити точку')
     await expect(hint).toBeVisible()
     // Regression: picking may start before the map has loaded.
@@ -80,10 +80,57 @@ test.describe('Арфа', () => {
     await canvas.click({ position: { x: box.width * 0.6, y: box.height * 0.4 } })
     await expect(hint).toBeHidden()
     await page.getByTestId('open-settings').click()
-    await expect(page.getByTestId('point-value')).toHaveText(/^\d+\.\d{3}, \d+\.\d{3}$/)
+    const points = page.getByTestId('points')
+    await expect(points.getByRole('listitem')).toHaveCount(1)
+    await expect(points.getByRole('textbox')).toHaveValue('Дім')
+    // The watched place shows on the map with its name.
+    await page.keyboard.press('Escape')
     // Preferences persist across reloads.
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  })
+
+  test('legend explains every symbol in Ukrainian', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('open-legend').click()
+    const legend = page.getByTestId('legend')
+    await expect(legend).toBeVisible()
+    for (const text of [
+      'Шахед',
+      'FPV-дрон',
+      'Молнія / Ланцет',
+      'КАБ',
+      'Балістика',
+      'Вибухи',
+      'Ймовірна зона ураження',
+      'Мости / гребля перекриті',
+    ]) {
+      await expect(legend).toContainText(text)
+    }
+  })
+
+  test('feed tab shows channel posts with source chips', async ({ page, isMobile }) => {
+    await page.goto('/')
+    if (isMobile)
+      await page
+        .getByRole('button', { name: /загроз/ })
+        .first()
+        .click()
+    await page.getByTestId('tab-feed').click()
+    await expect(page.getByTestId('feed')).toBeVisible()
+  })
+
+  test('forecast: the selected drone shows likely targets', async ({ page, isMobile }) => {
+    await page.goto('/')
+    if (isMobile)
+      await page
+        .getByRole('button', { name: /загроз/ })
+        .first()
+        .click()
+    const row = page.getByTestId('threat-row').filter({ hasText: 'Шахеди' }).first()
+    await expect(row).toBeVisible({ timeout: 20_000 })
+    await row.click()
+    await expect(page.getByTestId('likely-targets')).toContainText('%')
   })
 
   test('layout fits the viewport without horizontal scroll', async ({ page }) => {

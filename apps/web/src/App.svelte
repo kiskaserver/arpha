@@ -1,17 +1,31 @@
 <script lang="ts">
-import { pointInGeometry } from '@arpha/shared'
+import { type ActiveAlert, pointInGeometry, type Track } from '@arpha/shared'
 import { onMount } from 'svelte'
+import LegendSheet from './components/LegendSheet.svelte'
 import SettingsSheet from './components/SettingsSheet.svelte'
 import ThreatPanel from './components/ThreatPanel.svelte'
 import TopBar from './components/TopBar.svelte'
+import { isVisible } from './lib/frame'
 import { uk } from './lib/i18n'
 import type { MapController } from './lib/map'
 import { MotionModel } from './lib/motion'
+import { type InAppAlert, Notifier } from './lib/notify'
 import { disablePush, enablePush, pushSupported } from './lib/push'
-import { applyTheme, loadSettings, prefersDark, type Settings, saveSettings } from './lib/settings'
+import {
+  applyTheme,
+  loadSettings,
+  newPointId,
+  prefersDark,
+  type Settings,
+  type SoundCategory,
+  saveSettings,
+} from './lib/settings'
+import { playSound, speak, unlockAudio, vibrate } from './lib/sound'
 import { applyEvent, initialState } from './lib/state'
 import { type ConnectionStatus, LiveStream } from './lib/stream'
-import { alertedFeatureIds, alertLevel, threatRows } from './lib/view'
+import { alertedFeatures, alertLevel, threatRows } from './lib/view'
+
+type Geometry = Parameters<typeof pointInGeometry>[1]
 
 const live = initialState()
 const motion = new MotionModel()
@@ -22,23 +36,48 @@ let status = $state<ConnectionStatus>('connecting')
 let settings = $state<Settings>(loadSettings())
 let selected = $state<string | null>(new URLSearchParams(location.search).get('track'))
 let showSettings = $state(false)
+let showLegend = $state(false)
 let picking = $state(false)
 let pushMessage = $state<string | null>(null)
 let mapState = $state<'loading' | 'ready' | 'failed'>('loading')
 let installPrompt = $state<(Event & { prompt(): Promise<void> }) | null>(null)
 let myFeatureIds = $state<string[]>([])
+let toast = $state<InAppAlert | null>(null)
+let flashing = $state<SoundCategory | null>(null)
 let mapEl: HTMLDivElement
 let map: MapController | null = null
+let boundaries: { features: { properties: { id: string }; geometry: Geometry }[] } | null = null
+let toastTimer: ReturnType<typeof setTimeout> | undefined
 
 const serverNow = () => Date.now() + live.clockOffset
 
+const notifier = new Notifier({
+  sound: (c) => playSound(settings.sounds[c]),
+  vibrate,
+  speak,
+  flash: (c) => {
+    flashing = c
+    setTimeout(() => (flashing = null), 4000)
+  },
+  show: (a) => {
+    toast = a
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => (toast = null), 8000)
+  },
+})
+
 const rows = $derived.by(() => {
   void version
-  return threatRows(live.tracks.values(), settings.point, now, settings.radiusKm)
+  const visible = [...live.tracks.values()].filter((t) => isVisible(t, now, settings.lingerMin))
+  return threatRows(visible, settings.points[0] ?? null, now, settings.radiusKm)
 })
 const alerts = $derived.by(() => {
   void version
   return live.alerts
+})
+const feed = $derived.by(() => {
+  void version
+  return live.feed
 })
 const demo = $derived.by(() => {
   void version
@@ -47,6 +86,8 @@ const demo = $derived.by(() => {
 const level = $derived(alertLevel(alerts, myFeatureIds))
 
 function onStreamEvent(ev: Parameters<typeof applyEvent>[1]) {
+  const prevAlerts: ActiveAlert[] = live.alerts.alerts
+  const initial = ev.type === 'snapshot'
   applyEvent(live, ev, Date.now())
   const t = serverNow()
   if (ev.type === 'snapshot') {
@@ -54,55 +95,78 @@ function onStreamEvent(ev: Parameters<typeof applyEvent>[1]) {
     for (const track of live.tracks.values()) motion.upsert(track, t)
   } else if (ev.type === 'track') {
     motion.upsert(ev.track, t)
+    notifier.track(ev.track, settings.points, settings, t)
   } else if (ev.type === 'track_removed') {
     motion.remove(ev.id)
     if (selected === ev.id) selected = null
   }
-  if (ev.type === 'alerts' || ev.type === 'snapshot') map?.setAlerts(alertedFeatureIds(live.alerts))
+  if (ev.type === 'alerts' || initial) {
+    map?.setAlerts(alertedFeatures(live.alerts))
+    // The first snapshot is the current state, not news.
+    if (!initial) notifier.alerts(prevAlerts, live.alerts.alerts, myFeatureIds, settings, t)
+  }
+  if (ev.type === 'infra' || initial) map?.setInfra(live.infra)
   version++
   map?.invalidate()
 }
 
+function persist() {
+  saveSettings($state.snapshot(settings))
+}
+
 function updateSettings(patch: Partial<Settings>) {
   settings = { ...settings, ...patch }
-  saveSettings($state.snapshot(settings))
+  persist()
   if ('theme' in patch) {
     applyTheme(settings.theme)
     map?.setTheme(prefersDark(settings.theme))
   }
-  if ('point' in patch || 'radiusKm' in patch) {
-    map?.setObserver(settings.point, settings.radiusKm)
-    void refreshMyAreas()
+  if ('points' in patch || 'radiusKm' in patch) {
+    map?.setPoints(settings.points, settings.radiusKm)
+    refreshMyAreas()
   }
-  if (
-    settings.pushEnabled &&
-    ('point' in patch || 'radiusKm' in patch || 'pushAlerts' in patch || 'pushThreats' in patch)
-  ) {
-    void togglePush(true)
-  }
+  if ('lingerMin' in patch) map?.setLinger(settings.lingerMin)
+  if ('hotspots' in patch) void refreshHotspots()
+  const pushRelevant = ['points', 'radiusKm', 'pushAlerts', 'pushThreats', 'classes']
+  if (settings.pushEnabled && pushRelevant.some((k) => k in patch)) void togglePush(true)
 }
 
-/** Which polygons contain my point — decides "тривога у вашій громаді". */
+/** Which polygons contain my points — decides "тривога у вашій громаді". */
 async function refreshMyAreas() {
-  const p = settings.point
-  if (!p) {
+  if (!settings.points.length) {
     myFeatureIds = []
     return
   }
   try {
-    const res = await fetch('/boundaries.geojson')
-    const data = (await res.json()) as {
-      features: { properties: { id: string }; geometry: Parameters<typeof pointInGeometry>[1] }[]
+    boundaries ??= await (await fetch('/boundaries.geojson')).json()
+    const ids = new Set<string>()
+    for (const f of boundaries!.features) {
+      if (settings.points.some((p) => pointInGeometry(p, f.geometry))) ids.add(f.properties.id)
     }
-    myFeatureIds = data.features
-      .filter((f) => pointInGeometry(p, f.geometry))
-      .map((f) => f.properties.id)
+    myFeatureIds = [...ids]
   } catch {
     myFeatureIds = []
   }
 }
 
-function useGps() {
+async function refreshHotspots() {
+  if (!settings.hotspots) {
+    map?.setHotspots(null)
+    return
+  }
+  try {
+    map?.setHotspots(await (await fetch('/api/hotspots?days=30')).json())
+  } catch {
+    map?.setHotspots(null)
+  }
+}
+
+function addPoint(at: { lat: number; lon: number }) {
+  const name = uk.pointNameDefault(settings.points.length)
+  updateSettings({ points: [...settings.points, { id: newPointId(), name, ...at }].slice(0, 5) })
+}
+
+function addByGps() {
   if (!('geolocation' in navigator)) {
     pushMessage = uk.gpsFailed
     return
@@ -110,8 +174,8 @@ function useGps() {
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       const point = { lat: pos.coords.latitude, lon: pos.coords.longitude }
-      updateSettings({ point, pointSource: 'gps' })
-      map?.flyTo(point, 10)
+      addPoint(point)
+      map?.flyTo(point, 11)
     },
     (err) => {
       pushMessage = err.code === err.PERMISSION_DENIED ? uk.gpsDenied : uk.gpsFailed
@@ -134,15 +198,16 @@ async function togglePush(on: boolean) {
     return
   }
   const res = await enablePush({
-    point: settings.point,
+    points: settings.points.map(({ name, lat, lon }) => ({ name, lat, lon })),
     radiusKm: settings.radiusKm,
     alerts: settings.pushAlerts,
     threats: settings.pushThreats,
+    classes: settings.classes,
   })
   if (res.ok) {
     if (!settings.pushEnabled) {
       settings = { ...settings, pushEnabled: true }
-      saveSettings($state.snapshot(settings))
+      persist()
     }
     pushMessage = uk.pushOn
   } else {
@@ -155,6 +220,12 @@ async function togglePush(on: boolean) {
   }
 }
 
+function testSound(c: SoundCategory) {
+  unlockAudio()
+  playSound(settings.sounds[c])
+  if (settings.vibrate) vibrate([200, 100, 200])
+}
+
 function select(id: string | null) {
   selected = id
   map?.select(id)
@@ -164,9 +235,17 @@ function select(id: string | null) {
   history.replaceState(null, '', url)
 }
 
+function selectFromToast() {
+  const id = toast?.key.startsWith('track-') ? toast.key.slice(6) : null
+  toast = null
+  if (id) select(id)
+}
+
 onMount(() => {
   applyTheme(settings.theme)
   void refreshMyAreas()
+  // Browsers only allow sound after a user gesture.
+  addEventListener('pointerdown', unlockAudio, { once: true })
 
   const stream = new LiveStream({ onEvent: onStreamEvent, onStatus: (s) => (status = s) })
   stream.start()
@@ -201,7 +280,7 @@ onMount(() => {
         onPick: (point) => {
           picking = false
           map?.setPicking(false)
-          updateSettings({ point, pointSource: 'manual' })
+          addPoint(point)
         },
       }),
     )
@@ -209,10 +288,13 @@ onMount(() => {
       if (destroyed) return ctl.destroy()
       map = ctl
       map.bind(() => live.tracks.values(), motion)
-      map.setAlerts(alertedFeatureIds(live.alerts))
-      map.setObserver(settings.point, settings.radiusKm)
+      map.setAlerts(alertedFeatures(live.alerts))
+      map.setPoints(settings.points, settings.radiusKm)
+      map.setInfra(live.infra)
+      map.setLinger(settings.lingerMin)
       // The user may have started picking a point before the map finished loading.
       map.setPicking(picking)
+      void refreshHotspots()
       if (selected) map.select(selected)
       mapState = 'ready'
     })
@@ -230,6 +312,12 @@ onMount(() => {
     map?.destroy()
   }
 })
+
+const homeOrRegion = () => {
+  const p = settings.points[0]
+  if (p) map?.flyTo(p, 11)
+  else addByGps()
+}
 </script>
 
 <main class="app" class:picking>
@@ -239,7 +327,19 @@ onMount(() => {
     <div class="map-status" role="status">{mapState === 'failed' ? uk.mapFailed : uk.mapLoading}</div>
   {/if}
 
+  {#if flashing}
+    <div class="flash {flashing}" aria-hidden="true"></div>
+  {/if}
+
   <TopBar {level} alerts={alerts.alerts} {status} {demo} />
+
+  {#if toast}
+    <div class="toast-wrap" role="alert">
+      <button type="button" class="toast {toast.category}" onclick={selectFromToast} data-testid="toast">
+        {toast.title}
+      </button>
+    </div>
+  {/if}
 
   {#if picking}
     <div class="pick-hint" role="status">
@@ -257,7 +357,12 @@ onMount(() => {
         /></svg
       >
     </button>
-    <button type="button" class="fab" onclick={() => (settings.point ? map?.flyTo(settings.point, 10) : useGps())} aria-label={uk.locateMe}>
+    <button type="button" class="fab" onclick={() => (showLegend = true)} aria-label={uk.legend} data-testid="open-legend">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"
+        ><path fill="currentColor" d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /></svg
+      >
+    </button>
+    <button type="button" class="fab" onclick={homeOrRegion} aria-label={uk.locateMe}>
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"
         ><path fill="currentColor" d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.1A7 7 0 0 0 13 5.1V3h-2v2.1A7 7 0 0 0 5.1 11H3v2h2.1a7 7 0 0 0 5.9 5.9V21h2v-2.1a7 7 0 0 0 5.9-5.9H21z" /></svg
       >
@@ -269,7 +374,7 @@ onMount(() => {
     </button>
   </div>
 
-  <ThreatPanel {rows} {selected} {now} onselect={select} />
+  <ThreatPanel {rows} {feed} {selected} {now} onselect={select} />
 
   {#if showSettings}
     <SettingsSheet
@@ -278,15 +383,21 @@ onMount(() => {
       {pushMessage}
       canInstall={installPrompt !== null}
       onchange={updateSettings}
-      ongps={useGps}
-      onpick={startPicking}
+      onaddgps={addByGps}
+      onaddmap={startPicking}
       ontogglepush={togglePush}
+      ontestsound={testSound}
+      onlegend={() => ((showSettings = false), (showLegend = true))}
       oninstall={async () => {
         await installPrompt?.prompt()
         installPrompt = null
       }}
       onclose={() => (showSettings = false)}
     />
+  {/if}
+
+  {#if showLegend}
+    <LegendSheet onclose={() => (showLegend = false)} />
   {/if}
 </main>
 
@@ -311,6 +422,46 @@ onMount(() => {
     place-items: center;
     color: var(--muted);
     pointer-events: none;
+  }
+  .flash {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    pointer-events: none;
+    border: 14px solid var(--danger);
+    animation: flash 0.5s steps(2, jump-none) 8;
+  }
+  .flash.threat {
+    border-color: #ff9500;
+  }
+  @keyframes flash {
+    50% {
+      opacity: 0;
+    }
+  }
+  .toast-wrap {
+    position: absolute;
+    z-index: 7;
+    top: calc(env(safe-area-inset-top) + 60px);
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: min(520px, calc(100% - 24px));
+  }
+  .toast {
+    width: 100%;
+    padding: 10px 16px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--danger);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+  }
+  .toast.threat {
+    background: #ff9500;
+    color: #111;
   }
   .fabs {
     position: absolute;
@@ -357,6 +508,11 @@ onMount(() => {
     background: rgb(0 0 0 / 0.15);
     font: inherit;
     cursor: pointer;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .flash {
+      animation: none;
+    }
   }
   @media (min-width: 900px) {
     .fabs {

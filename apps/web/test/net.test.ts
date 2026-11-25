@@ -106,7 +106,13 @@ describe('push', () => {
     }
   }
 
-  const prefs = { point: null, radiusKm: 10, alerts: true, threats: true }
+  const prefs = {
+    points: [],
+    radiusKm: 10,
+    alerts: true,
+    threats: true,
+    classes: ['drones' as const],
+  }
 
   it('detects support', () => {
     expect(pushSupported(env().env)).toBe(true)

@@ -1,19 +1,22 @@
 <script lang="ts">
-import { threatLabelUk } from '@arpha/shared'
+import { type FeedItem, threatLabelUk } from '@arpha/shared'
 import { formatAgo, formatDistance, formatEta } from '../lib/format'
 import { uk } from '../lib/i18n'
 import type { ThreatRow } from '../lib/view'
+import FeedList from './FeedList.svelte'
 import ThreatCard from './ThreatCard.svelte'
 import ThreatIcon from './ThreatIcon.svelte'
 
 interface Props {
   rows: ThreatRow[]
+  feed: FeedItem[]
   selected: string | null
   now: number
   onselect: (id: string | null) => void
 }
-let { rows, selected, now, onselect }: Props = $props()
+let { rows, feed, selected, now, onselect }: Props = $props()
 let expanded = $state(false)
+let tab = $state<'threats' | 'feed'>('threats')
 
 const active = $derived(rows.filter((r) => r.track.status === 'active'))
 const selectedRow = $derived(rows.find((r) => r.track.id === selected) ?? null)
@@ -52,6 +55,14 @@ const nearest = $derived(active.find((r) => r.approach?.etaMin != null) ?? null)
       </span>
     </button>
 
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" aria-selected={tab === 'threats'} class:on={tab === 'threats'} onclick={() => ((tab = 'threats'), (expanded = true))}>{uk.tabThreats}</button>
+      <button type="button" role="tab" aria-selected={tab === 'feed'} class:on={tab === 'feed'} onclick={() => ((tab = 'feed'), (expanded = true))} data-testid="tab-feed">{uk.tabFeed}{#if feed.length}<span class="badge">{feed.length}</span>{/if}</button>
+    </div>
+
+    {#if tab === 'feed'}
+      <div class="scroll"><FeedList items={feed} onselect={(id) => onselect(id)} /></div>
+    {:else}
     <ul id="threat-list" class="scroll list" data-testid="threat-list">
       {#each rows as r (r.track.id)}
         <li class:done={r.track.status !== 'active'}>
@@ -82,6 +93,7 @@ const nearest = $derived(active.find((r) => r.approach?.etaMin != null) ?? null)
         <li class="empty">{uk.threatsNone}</li>
       {/each}
     </ul>
+    {/if}
   {/if}
 </section>
 
@@ -136,6 +148,38 @@ const nearest = $derived(active.find((r) => r.approach?.etaMin != null) ?? null)
   }
   .nearest b {
     color: var(--danger);
+  }
+  .tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin: 0 16px 6px;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--chip);
+  }
+  .tabs button {
+    border: 0;
+    border-radius: 8px;
+    padding: 6px;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .tabs button.on {
+    background: var(--panel-solid);
+    color: var(--text);
+    box-shadow: var(--shadow);
+  }
+  .badge {
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 11px;
+    background: var(--chip-strong);
   }
   .scroll {
     overflow-y: auto;

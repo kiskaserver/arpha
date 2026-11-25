@@ -44,6 +44,18 @@ export class Store {
         data TEXT NOT NULL,
         updated_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS observations (
+        at INTEGER NOT NULL,
+        place TEXT NOT NULL,
+        lat REAL NOT NULL,
+        lon REAL NOT NULL,
+        type TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS observations_at ON observations(at);
+      CREATE TABLE IF NOT EXISTS kv (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS push_subscriptions (
         endpoint TEXT PRIMARY KEY,
         data TEXT NOT NULL,
@@ -128,6 +140,52 @@ export class Store {
 
   deleteSubscription(endpoint: string): void {
     this.db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint)
+  }
+
+  addObservation(o: { at: number; place: string; lat: number; lon: number; type: string }): void {
+    this.db
+      .prepare('INSERT INTO observations (at, place, lat, lon, type) VALUES (?, ?, ?, ?, ?)')
+      .run(o.at, o.place, o.lat, o.lon, o.type)
+  }
+
+  /** Most reported places since `since` (routes and impact areas repeat). */
+  hotspots(
+    since: number,
+    limit = 200,
+    types?: string[],
+  ): { name: string; lat: number; lon: number; count: number }[] {
+    const filter = types?.length ? `AND type IN (${types.map(() => '?').join(',')})` : ''
+    return this.db
+      .prepare(
+        `SELECT place AS name, AVG(lat) AS lat, AVG(lon) AS lon, COUNT(*) AS count
+         FROM observations WHERE at >= ? ${filter}
+         GROUP BY place ORDER BY count DESC LIMIT ?`,
+      )
+      .all(since, ...(types ?? []), limit) as {
+      name: string
+      lat: number
+      lon: number
+      count: number
+    }[]
+  }
+
+  pruneObservations(olderThan: number): void {
+    this.db.prepare('DELETE FROM observations WHERE at < ?').run(olderThan)
+  }
+
+  getJson<T>(key: string): T | null {
+    const row = this.db.prepare('SELECT value FROM kv WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined
+    return row ? (JSON.parse(row.value) as T) : null
+  }
+
+  setJson(key: string, value: unknown): void {
+    this.db
+      .prepare(
+        'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      )
+      .run(key, JSON.stringify(value))
   }
 
   close(): void {
