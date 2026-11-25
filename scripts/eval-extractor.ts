@@ -18,7 +18,15 @@ process.loadEnvFile?.('.env')
 interface Expected {
   relevant: boolean
   all_clear?: boolean
-  events?: { type: string; action?: string; location?: string; toward?: string; count?: number }[]
+  /** `place` accepts either location or toward ("на X" is genuinely ambiguous). */
+  events?: {
+    type?: string
+    action?: string
+    location?: string
+    toward?: string
+    place?: string
+    count?: number
+  }[]
 }
 interface Case {
   name: string
@@ -71,10 +79,12 @@ for (const c of cases) {
   if (c.expected.all_clear !== undefined) checks.push(got.all_clear === c.expected.all_clear)
   for (const [i, e] of (c.expected.events ?? []).entries()) {
     const g = got.events[i]
-    checks.push(g?.type === e.type)
+    if (e.type) checks.push(g?.type === e.type)
+    else checks.push(Boolean(g))
     if (e.action) checks.push(g?.action === e.action)
     if (e.location) checks.push(samePlace(g?.location, e.location))
     if (e.toward) checks.push(samePlace(g?.toward, e.toward))
+    if (e.place) checks.push(samePlace(g?.location, e.place) || samePlace(g?.toward, e.place))
     if (e.count) checks.push(g?.count === e.count)
   }
   const ok = checks.filter(Boolean).length

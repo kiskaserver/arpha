@@ -64,6 +64,23 @@ describe('Gazetteer (real data)', () => {
     ['Хортиця', 'Хортиця'],
     ['Шевченківський район', 'Шевченківський район'],
     ['Мелітополя', 'Мелітополь'],
+    // City slang used by local monitoring channels.
+    ['Шевчік', 'Шевченківський район'],
+    ['Космос', 'Космічний'],
+    ['Заводи', 'Заводський район'],
+    ['ВХ', 'Верхня Хортиця'],
+    ['Осипок', 'Осипенківський'],
+    ['Бородок', 'Бородинський'],
+    ['Мости', 'Мости Преображенського'],
+    ['ГЕС', 'ДніпроГЕС'],
+    ['Ліве', 'Запоріжжя-Ліве'],
+    ['Кічкас', 'Павло-Кічкас'],
+    ['Дослідна', 'Дослідна Станція'],
+    ['Соцмісто', 'Соцмісто'],
+    ['Бабурки', 'Бабурка'],
+    ['Підпорожнянка', 'Підпорожнянка'],
+    ['Великий Луг', 'Великий Луг'],
+    ['центр', 'Центр міста'],
   ])('%s → %s', (input, expected) => {
     expect(gz.lookup(input)?.name).toBe(expected)
   })
@@ -82,6 +99,16 @@ describe('Gazetteer (real data)', () => {
     const picked = gz.lookup('Михайлівка', { near })!
     const closest = Math.min(...all.map((r) => haversineKm(near, r)))
     expect(haversineKm(near, picked)).toBeCloseTo(closest, 3)
+  })
+
+  it('a current name beats a historic alias, and proximity picks the homonym', () => {
+    // Мелітополь was once called Новоолександрівка; the live village must win.
+    const near = { lat: 47.7647, lon: 35.2129 }
+    const v = gz.lookup('Новоолександрівка', { near })!
+    expect(v.name).toBe('Новоолександрівка')
+    expect(haversineKm(v, near)).toBeLessThan(20)
+    expect(gz.lookup('Піски', { near })!.name).toBe('Піски')
+    expect(haversineKm(gz.lookup('Піски', { near })!, near)).toBeLessThan(10)
   })
 
   it('tolerates typos via fuzzy matching', () => {
@@ -154,13 +181,14 @@ describe('GeoNames import', () => {
 
   it('curated records override generated duplicates', () => {
     const merged = mergeRecords(
-      [{ n: 'Запоріжжя', lat: 1, lon: 1, k: 'city', r: 'ZP' }],
+      [{ n: 'Запоріжжя', lat: 47.8, lon: 35.1, k: 'city', r: 'ZP' }],
       [
-        { n: 'Запоріжжя', lat: 2, lon: 2, k: 'city', r: 'ZP' },
+        { n: 'Запоріжжя', lat: 47.81, lon: 35.11, k: 'city', r: 'ZP' },
+        { n: 'Запоріжжя', lat: 48.5, lon: 36, k: 'village', r: 'ZP' },
         { n: 'Азов', lat: 3, lon: 3, k: 'town' },
       ],
     )
-    expect(merged).toHaveLength(2)
-    expect(merged.find((m) => m.n === 'Запоріжжя')!.lat).toBe(1)
+    expect(merged).toHaveLength(3)
+    expect(merged.filter((m) => m.n === 'Запоріжжя').map((m) => m.lat)).toEqual([47.8, 48.5])
   })
 })

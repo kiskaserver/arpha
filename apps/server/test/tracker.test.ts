@@ -127,6 +127,12 @@ describe('Tracker', () => {
     expect(b).toBe(a)
   })
 
+  it('a ballistic warning "for a place" becomes a target, not a position', () => {
+    const { tracker } = setup()
+    const [a] = tracker.apply([resolved({ type: 'ballistic', location: 'Запоріжжя' })], ctx(0))
+    expect(tracker.get(a!)).toMatchObject({ position: null, target: { name: 'Запоріжжя' } })
+  })
+
   it('stationary types sit on the latest report', () => {
     const { tracker } = setup()
     const [a] = tracker.apply([resolved({ type: 'kab', location: 'Оріхів' })], ctx(0))

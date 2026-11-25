@@ -181,6 +181,24 @@ describe('Pipeline', () => {
     expect(extract).toHaveBeenCalledTimes(2)
   })
 
+  it('drops geocodes outside the region or far from the linked track', async () => {
+    const { pipeline, tracker } = setup((i) =>
+      i.message.id === 1
+        ? relevant(event({ location: 'Кушугум' }))
+        : relevant(event({ action: 'update', location: i.message.text })),
+    )
+    await pipeline.submit(message({ id: 1, text: 'шахед Кушугум' }))
+    const id = tracker.active()[0]!.id
+    // Бердянськ is in the oblast but 170 km from the track: a homonym/mistake, not a flight.
+    await pipeline.submit(message({ id: 2, text: 'Бердянськ', replyToId: 1, date: min(0.5) }))
+    expect(tracker.get(id)!.placeName).toBe('Кушугум')
+    // Київ is outside the region altogether.
+    await pipeline.submit(message({ id: 3, text: 'Київ', replyToId: 1, date: min(0.6) }))
+    expect(tracker.get(id)!.placeName).toBe('Кушугум')
+    await pipeline.submit(message({ id: 4, text: 'Балабине', replyToId: 1, date: min(0.7) }))
+    expect(tracker.get(id)!.placeName).toBe('Балабине')
+  })
+
   it('parseStored round-trips and rejects junk', () => {
     expect(Pipeline.parseStored(null)).toBeNull()
     expect(Pipeline.parseStored('{"relevant":true,"all_clear":false,"events":[]}')).toEqual({

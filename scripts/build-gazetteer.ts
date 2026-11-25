@@ -23,7 +23,11 @@ const generated = parseGeoNames(tsv)
 const curated = JSON.parse(
   readFileSync(resolve(root, 'data/landmarks.json'), 'utf8'),
 ) as PlaceRecord[]
-const merged = mergeRecords(curated, generated)
+// Precedence: curated landmarks/slang > OSM city micro-districts > GeoNames.
+const city = JSON.parse(
+  readFileSync(resolve(root, 'data/city-places.json'), 'utf8'),
+) as PlaceRecord[]
+const merged = mergeRecords(mergeRecords(curated, city), generated)
 
 writeFileSync(resolve(root, 'data/gazetteer.json'), `${JSON.stringify(merged)}\n`)
 const zp = merged.filter((r) => r.r === 'ZP').length

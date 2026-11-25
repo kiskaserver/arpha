@@ -4,43 +4,89 @@
     "text": "🛵 3 шахеди в районі Михайлівки, курсом на Запоріжжя",
     "expected": {
       "relevant": true,
-      "events": [{ "type": "shahed", "location": "Михайлівка", "toward": "Запоріжжя", "count": 3 }]
+      "events": [
+        {
+          "type": "shahed",
+          "location": "Михайлівка",
+          "toward": "Запоріжжя",
+          "count": 3
+        }
+      ]
     }
   },
   {
     "name": "russian wording and case forms",
     "text": "Мопеды над Васильевкой, летят на север",
-    "expected": { "relevant": true, "events": [{ "type": "shahed", "location": "Василівка" }] }
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "shahed",
+          "location": "Василівка"
+        }
+      ]
+    }
   },
   {
     "name": "reply minus",
     "text": "Мінус",
     "parents": ["Шахед повз Балабине на Запоріжжя"],
-    "expected": { "relevant": true, "events": [{ "type": "shahed", "action": "destroyed" }] }
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "shahed",
+          "action": "destroyed"
+        }
+      ]
+    }
   },
   {
     "name": "kab launches",
     "text": "Пуски КАБ на Оріхів та Малу Токмачку!",
-    "expected": { "relevant": true, "events": [{ "type": "kab", "location": "Оріхів" }] }
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "kab",
+          "location": "Оріхів"
+        }
+      ]
+    }
   },
   {
     "name": "ballistic threat",
     "text": "❗️Загроза застосування балістики! Запоріжжя — в укриття",
-    "expected": { "relevant": true, "events": [{ "type": "ballistic", "toward": "Запоріжжя" }] }
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "ballistic",
+          "place": "Запоріжжя"
+        }
+      ]
+    }
   },
   {
     "name": "all clear",
     "text": "Відбій тривоги в Запоріжжі та області 🟢",
-    "expected": { "relevant": true, "all_clear": true }
+    "expected": {
+      "relevant": true,
+      "all_clear": true
+    }
   },
   {
     "name": "donation ad",
     "text": "Друзі, підтримайте канал — посилання на банку в описі 🙏",
-    "expected": { "relevant": false }
+    "expected": {
+      "relevant": false
+    }
   },
   {
     "name": "night summary is not a live threat",
     "text": "За ніч ППО збила 54 ударні БпЛА над країною",
-    "expected": { "relevant": false }
+    "expected": {
+      "relevant": false
+    }
   }
 ]

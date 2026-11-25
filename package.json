@@ -21,15 +21,18 @@
     "test:coverage": "vitest run --coverage --project shared --project server --coverage.reportsDirectory=coverage/node && vitest run --coverage --project web --coverage.reportsDirectory=coverage/web",
     "test:e2e": "playwright test",
     "eval": "tsx scripts/eval-extractor.ts",
+    "replay": "tsx scripts/replay.ts",
     "tg:login": "tsx scripts/tg-login.ts",
     "tg:dump": "tsx scripts/tg-dump.ts",
     "push:keys": "tsx scripts/push-keys.ts",
     "data:gazetteer": "tsx scripts/build-gazetteer.ts",
     "data:boundaries": "tsx scripts/build-boundaries.ts",
+    "data:city": "tsx scripts/build-city.ts",
     "prepare": "husky || true"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^1.14.0",
+    "@arpha/shared": "workspace:^",
     "@biomejs/biome": "2.6.9",
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",

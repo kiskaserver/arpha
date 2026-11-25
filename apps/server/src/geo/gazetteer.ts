@@ -63,6 +63,8 @@ interface Indexed {
   rec: PlaceRecord
   keys: string[]
   stems: string[]
+  /** Folded current name; aliases include historic names that now belong elsewhere. */
+  primary: string
 }
 
 export interface LookupOptions {
@@ -87,7 +89,7 @@ export class Gazetteer {
       const names = [rec.n, ...(rec.a ?? [])]
       const keys = [...new Set(names.map(foldName).filter((k) => k.length >= 2))]
       const stems = [...new Set(keys.flatMap((k) => alternations(stemName(k))))]
-      const item: Indexed = { rec, keys, stems }
+      const item: Indexed = { rec, keys, stems, primary: foldName(rec.n) }
       for (const k of keys) push(this.#exact, k, item)
       for (const s of stems) push(this.#stem, s, item)
       for (const k of keys) push(this.#byFirst, k[0]!, item)
@@ -100,11 +102,19 @@ export class Gazetteer {
     if (key.length < 2) return null
 
     const exact = this.#exact.get(key)
-    if (exact) return this.#best(exact, 1, opts)
+    if (exact)
+      return this.#best(
+        preferPrimary(exact, (i) => i.primary === key),
+        1,
+        opts,
+      )
 
     const stem = stemName(key)
     const byStem = this.#stem.get(stem)
-    if (byStem) return this.#best(byStem, 0.95, opts)
+    if (byStem) {
+      const isPrimary = (i: Indexed) => alternations(stemName(i.primary)).includes(stem)
+      return this.#best(preferPrimary(byStem, isPrimary), 0.95, opts)
+    }
 
     // Fuzzy: only compare names sharing the first letter, keeps it O(bucket).
     let bestScore = 0
@@ -151,7 +161,9 @@ function rank(rec: PlaceRecord, near?: LatLon): number {
   let r = KIND_RANK[rec.k] * 10
   r += Math.log10((rec.p ?? 0) + 1) * 4
   if (rec.r === 'ZP') r += 15
-  if (near) r -= haversineKm(near, rec) / 5
+  // Proximity dominates: reports describe a moving object, so the homonym next to
+  // its last position is almost always the right one.
+  if (near) r -= haversineKm(near, rec) / 2
   return r
 }
 
@@ -162,6 +174,16 @@ function rank(rec: PlaceRecord, near?: LatLon): number {
 function alternations(stem: string): string[] {
   const m = /^(.*)и(в|л|р|н|ж)$/.exec(stem)
   return m ? [stem, `${m[1]}о${m[2]}`, `${m[1]}е${m[2]}`] : [stem]
+}
+
+/**
+ * GeoNames lists historic names as aliases (Мелітополь was "Новоолександрівка"),
+ * so a place currently called X beats one that used to be called X. Curated
+ * records (they carry an explicit precision) keep their aliases: those are deliberate.
+ */
+function preferPrimary(items: Indexed[], isPrimary: (i: Indexed) => boolean): Indexed[] {
+  if (!items.some(isPrimary)) return items
+  return items.filter((i) => isPrimary(i) || i.rec.e !== undefined)
 }
 
 function push<K, V>(map: Map<K, V[]>, key: K, value: V) {

@@ -146,7 +146,12 @@ export class Tracker {
     }
   }
 
-  #applyOne(ev: ResolvedEvent, ctx: ApplyContext, used: Set<string>): string | null {
+  #applyOne(raw: ResolvedEvent, ctx: ApplyContext, used: Set<string>): string | null {
+    // A ballistic warning names what is threatened, never where the missile is.
+    const ev: ResolvedEvent =
+      raw.type === 'ballistic' && raw.locationPlace && !raw.towardPlace
+        ? { ...raw, towardPlace: raw.locationPlace, locationPlace: null, fromPlace: null }
+        : raw
     const obs = this.#observation(ev)
     const state = this.#associate(ev, ctx, obs?.point ?? null, used)
 
