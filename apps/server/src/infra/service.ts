@@ -75,9 +75,13 @@ export class InfraService {
 export class FeedBuffer {
   readonly #items: FeedItem[] = []
   readonly #size: number
+  readonly #store: Store | null
 
-  constructor(size = 80) {
+  /** With a store, the feed survives restarts. */
+  constructor(size = 80, store: Store | null = null) {
     this.#size = size
+    this.#store = store
+    this.#items.push(...(store?.getJson<FeedItem[]>('feed') ?? []).slice(0, size))
   }
 
   add(item: FeedItem): void {
@@ -85,6 +89,7 @@ export class FeedBuffer {
     this.#items.unshift(item)
     this.#items.sort((a, b) => b.at - a.at)
     this.#items.length = Math.min(this.#items.length, this.#size)
+    this.#store?.setJson('feed', this.#items)
   }
 
   list(): FeedItem[] {

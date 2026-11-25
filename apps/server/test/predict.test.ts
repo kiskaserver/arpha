@@ -180,6 +180,10 @@ describe('InfraService and feed', () => {
     feed.add(item('b', 3))
     feed.add(item('c', 2))
     expect(feed.list().map((i) => i.key)).toEqual(['b', 'c'])
+    // Persisted across restarts when given a store.
+    const store = new Store(':memory:')
+    new FeedBuffer(5, store).add(item('x', 9))
+    expect(new FeedBuffer(5, store).list().map((i) => i.key)).toEqual(['x'])
   })
 
   it('store: hotspots aggregate observations', () => {
