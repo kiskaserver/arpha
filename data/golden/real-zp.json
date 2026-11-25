@@ -1,0 +1,170 @@
+[
+  {
+    "name": "jet drone enters the city from Vilniansk",
+    "text": "Реактивний від Вільнянська на Запоріжжя",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "jet_drone",
+          "toward": "Запоріжжя"
+        }
+      ]
+    }
+  },
+  {
+    "name": "bare micro-district reply",
+    "text": "Ліве",
+    "parents": ["Реактивний від Вільнянська на Запоріжжя"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "jet_drone",
+          "action": "update",
+          "location": "Запоріжжя-Ліве"
+        }
+      ]
+    }
+  },
+  {
+    "name": "slang: Shevchik with numbers",
+    "text": "3 Шевчік",
+    "parents": ["Далі курс на 1-2Шевчік", "Ліве", "Реактивний від Вільнянська на Запоріжжя"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "jet_drone",
+          "location": "Шевченківський район"
+        }
+      ]
+    }
+  },
+  {
+    "name": "place with course",
+    "text": "Криничне\nКурс Скелювате",
+    "parents": ["Пролітає Матвіївку", "Реактивний від Вільнянська на Запоріжжя"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "action": "update",
+          "location": "Криничне",
+          "toward": "Скелювате",
+          "type": "jet_drone"
+        }
+      ]
+    }
+  },
+  {
+    "name": "kab release toward the city",
+    "text": "Скид каб у бік Запоріжжя",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "kab",
+          "toward": "Запоріжжя"
+        }
+      ]
+    }
+  },
+  {
+    "name": "kab carrier",
+    "text": "Кабовоз на Пришиб",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "aircraft",
+          "place": "Пришиб"
+        }
+      ]
+    }
+  },
+  {
+    "name": "KABs fell ends the track",
+    "text": "Впали каби",
+    "parents": ["На космос", "Скид каб у бік Запоріжжя"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "kab",
+          "action": "lost"
+        }
+      ]
+    }
+  },
+  {
+    "name": "local all clear",
+    "text": "Локаційно над Запоріжжям чисто !\nВ області/районі чисто !",
+    "expected": {
+      "relevant": true,
+      "all_clear": true
+    }
+  },
+  {
+    "name": "kab launches from occupied Tokmak",
+    "text": "Пуски КАБів з-під Токмаку\nКурс Оріхів/Таврійське",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "kab",
+          "toward": "Оріхів"
+        }
+      ]
+    }
+  },
+  {
+    "name": "FPV is not tracked",
+    "text": "ФПВ вздовж траси на полуторку ... вдарила",
+    "expected": {
+      "relevant": false
+    }
+  },
+  {
+    "name": "power schedule is irrelevant",
+    "text": "❗️💡Оновлено графік:\n1.1: 07:00–10:30, 14:30–19:30\n1.2: 10:00–15:00",
+    "expected": {
+      "relevant": false
+    }
+  },
+  {
+    "name": "damage report after the fact",
+    "text": "🚨💥КАБ влучив у житловий будинок! У Космічному районі пошкоджено багатоповерхівку внаслідок авіаудару.",
+    "expected": {
+      "relevant": false
+    }
+  },
+  {
+    "name": "bridges slang",
+    "text": "На мости",
+    "parents": ["Реактив курс на Центр"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "jet_drone",
+          "location": "Мости Преображенського"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Osypok slang",
+    "text": "Осіпок",
+    "parents": ["Далі курс Осіпок", "Півколо", "ГЕС"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "action": "update",
+          "location": "Осипенківський"
+        }
+      ]
+    }
+  }
+]

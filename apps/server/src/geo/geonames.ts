@@ -1,3 +1,4 @@
+import { haversineKm } from '@arpha/shared'
 import { jaroWinkler } from '../text/normalize'
 import type { PlaceKind, PlaceRecord } from './gazetteer'
 
@@ -141,9 +142,15 @@ export function parseGeoNames(tsv: string): PlaceRecord[] {
   return out
 }
 
-/** Curated landmarks win over GeoNames duplicates of the same name. */
+/**
+ * Curated records win over generated ones describing the same place — same
+ * name within 5 km. Homonyms elsewhere (dozens of "Михайлівка") are kept.
+ */
 export function mergeRecords(curated: PlaceRecord[], generated: PlaceRecord[]): PlaceRecord[] {
-  const curatedNames = new Set(curated.map((c) => `${c.n}|${c.r ?? ''}`))
-  const generatedFiltered = generated.filter((g) => !curatedNames.has(`${g.n}|${g.r ?? ''}`))
-  return [...curated, ...generatedFiltered].sort((a, b) => a.n.localeCompare(b.n, 'uk'))
+  const byName = new Map<string, PlaceRecord[]>()
+  for (const c of curated) byName.set(c.n, [...(byName.get(c.n) ?? []), c])
+  const isDuplicate = (g: PlaceRecord) => (byName.get(g.n) ?? []).some((c) => haversineKm(c, g) < 5)
+  return [...curated, ...generated.filter((g) => !isDuplicate(g))].sort((a, b) =>
+    a.n.localeCompare(b.n, 'uk'),
+  )
 }

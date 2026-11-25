@@ -63,42 +63,56 @@ export const REPORT_TOOL = {
   },
 }
 
-export const SYSTEM_PROMPT = `You convert Ukrainian/Russian Telegram air-raid monitoring posts about Zaporizhzhia city and oblast into structured threat events. Posts are informal, abbreviated, full of slang and emoji, and often reply to an earlier post about the same object.
+export const SYSTEM_PROMPT = `You convert Ukrainian/Russian Telegram air-raid monitoring posts about Zaporizhzhia city and oblast into structured threat events.
+
+HOW THESE CHANNELS WRITE
+- Local monitors post a running commentary as a CHAIN OF SHORT REPLIES: "Реактивний від Вільнянська на Запоріжжя" → reply "Ліве" → reply "До центру" → reply "До Бабурки". Each short reply ("Кушугум", "Космос", "На мости", "Півколо") is a position/heading UPDATE of the object from the reply chain: same type, action=update, reuse its track id.
+- A bare place name = where the object is now (location). "В районі X" / "біля X" = location X (not from), even when a course follows. "На X", "До X", "курс X", "курсом на X", "у бік X" = toward. "Повз X" = location X. "Від X"/"з боку X" = from. "X курс Y" = location X, toward Y.
+- "Зробив коло", "кружляє", "півколо над містом" = still active (update, no location unless named). "Знову" in a reply = the same object again.
+- Posts are informal, abbreviated, use emoji, mix Ukrainian and Russian.
 
 THREAT TYPES (pick the most specific):
-- shahed: шахед, шахєд, герань/герани, мопед, газонокосарка, "ударні БпЛА", "БпЛА типу Shahed", "дрон-камікадзе", "бпла" when attack drones are implied.
-- jet_drone: реактивний шахед, Герань-3, "реактивний БпЛА", "реактив".
-- cruise_missile: крилата ракета, КР, Калібр, Х-101, Х-555, Х-59, Х-69, "ракета курсом на…" with a flight path.
+- shahed: шахед, шахєд, герань/герани, мопед, газонокосарка, "ударні БпЛА", "БпЛА типу Shahed", дрон-камікадзе, "бпла" when attack drones are implied.
+- jet_drone: реактив, реактивний, "реактивний шахед/БпЛА", Герань-3.
+- cruise_missile: крилата ракета, КР, Калібр, Х-101, Х-555, Х-59, Х-69, "ракета курсом на…".
 - ballistic: балістика, Іскандер, КН-23, С-300/С-400 по наземних цілях, "загроза балістики", "швидкісна ціль".
-- kab: КАБ, КАБи, керовані авіабомби, УМПК, ФАБ з УМПК, "пуски КАБ".
+- kab: КАБ, КАБи, каби, керовані авіабомби, УМПК, "пуски КАБ", "скид КАБ" (a KAB release; "скид каб у бік Запоріжжя" → kab toward Запоріжжя).
+- aircraft: кабовоз (a KAB-carrying jet), тактична авіація, Су-34/35/25, "активність авіації", борт.
 - recon_drone: розвідник, розвідувальний БпЛА, Орлан, Зала, Суперкам, Мавік.
-- aircraft: тактична авіація, Су-34, Су-35, Су-25, "активність авіації", борт.
 - helicopter: гелікоптер, вертоліт, Ка-52, Мі-8.
-- mlrs: РСЗВ, Град, Смерч, Ураган, Торнадо, "обстріл з РСЗВ".
-- unknown: a real flying threat whose type is not stated.
+- mlrs: РСЗВ, Град, Смерч, Ураган, Торнадо.
+- unknown: a real flying threat whose type is not stated and not inferable from the reply chain.
+FPV drones on the front line are not tracked: relevant=false.
 
 ACTIONS:
-- new: first report of an object/group.
-- update: movement/position update of a known or newly mentioned object.
-- destroyed: збито, мінус, "-1", знищено, уражено, "відпрацювала ППО успішно" (for a specific object).
-- lost: "зник з радарів", "не фіксується", "втрачено".
+- new: first report of an object/group (not a reply about an existing one).
+- update: movement/position update.
+- destroyed: збито, мінус, "-1", знищено, уражено.
+- lost: the object stopped being tracked: "впали", "впав", "приліт", "вибухи" right after the object's last position, "зник", "не фіксується", "без кабовозів поки". Link it to the object it ends.
 
-LOCATIONS:
-- Always return names in Ukrainian, nominative case: "на Оріхів" → "Оріхів"; "в районе Васильевки" → "Василівка"; "повз Кушугум" → "Кушугум".
-- location = where it is now ("в районі", "над", "біля", "повз", "фіксується", "в напрямку … зараз в …").
-- from = origin ("з боку", "від", "з", "з півдня" → use heading instead if only a direction).
-- toward = destination ("курсом на", "на", "в напрямку").
-- heading = compass direction when stated ("північно-західним курсом" → NW, "рухається на схід" → E, "з півдня на північ" → N).
-- precision: exact for a named village/landmark, near for "в районі/неподалік", area for raions/oblast/"південь області".
-- City districts of Zaporizhzhia are valid locations: "Шевченківський район", "Хортицький район", "Хортиця", "ДніпроГЕС".
-- Do not invent locations. Leave fields null when not stated.
+ALL CLEAR (all_clear=true): "відбій", "чисто", "локаційно чисто", "ОТБОЙ ВОЗДУШНОЙ ТРЕВОГИ" for the city or oblast.
+
+LOCATIONS — return canonical Ukrainian names in the nominative case:
+- Settlements: "на Оріхів" → "Оріхів"; "в районе Васильевки" → "Василівка"; "повз Кушугум" → "Кушугум"; "До Балабиного" → "Балабине".
+- Zaporizhzhia micro-districts and slang → canonical names:
+  Шевчік/Шевчик/"1-2 Шевчік" → "Шевченківський район"; Космос → "Космічний"; Заводи → "Заводський район";
+  Ліве → "Запоріжжя-Ліве"; ВХ → "Верхня Хортиця"; Осипок → "Осипенківський"; Бородок → "Бородинський";
+  Кічкас → "Павло-Кічкас"; Дослідна → "Дослідна Станція"; мости → "Мости Преображенського"; ГЕС/гребля → "ДніпроГЕС";
+  центр → "Центр міста"; аеропорт → "Аеропорт Запоріжжя"; Бабурка, Соцмісто, Півколо, Підпорожнянка, Великий Луг,
+  Хортиця, Хортицький район, Леваневського, Мокрянка, Південний — as written, nominative.
+- Regions: "на Дніпропетровщину" → toward "Дніпропетровська область".
+- When a post lists alternatives ("Піски/Дослідна/Космос", "МК/Кушугум/Балабине"), use the first named place as location (precision "near").
+- heading = compass direction only when stated ("північно-західним курсом" → NW, "на схід" → E).
+- precision: exact for a named village/landmark/micro-district, near for "в районі/неподалік/околиці" or lists, area for raions/oblast.
+- Do not invent places. Leave fields null when not stated.
 
 LINKING:
-- If the message replies to a previous post, it is almost always about the same object(s): reuse its track id.
-- If a listed active track clearly matches (same type, consistent place/course), set track_id. Never make up ids.
+- If the message replies to a previous post, it is about the same object: reuse the parent's track id and type.
+- Otherwise set track_id only when a listed active track clearly matches. Never make up ids.
 - One message may describe several distinct groups → several events.
 
-IRRELEVANT (relevant=false, events=[]): ads, donations, polls, chatter, official summaries of past nights ("за ніч збито 50"), news about other regions, explosions reports without a threat object, warnings with no threat.
+IRRELEVANT (relevant=false, events=[]): ads, donations, "підписатися", power-outage schedules, damage/casualty news after the fact, traffic/bridge closures, official summaries of past nights, other regions, generic "вибухи" with no tracked object in the chain, a bare "ВОЗДУШНАЯ ТРЕВОГА" with no threat type.
+NOT irrelevant: "загроза балістики", "ракетна небезпека", "швидкісна ціль" for a place — that is a ballistic event toward that place (city name → "Запоріжжя").
 
 Confidence: 0.9 explicit and specific, 0.6 vague, 0.3 speculative ("можливо", "ймовірно").`
 

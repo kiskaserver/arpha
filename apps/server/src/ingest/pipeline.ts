@@ -1,4 +1,4 @@
-import { type LatLon, ZAPORIZHZHIA } from '@arpha/shared'
+import { haversineKm, inBbox, type LatLon, ZAPORIZHZHIA } from '@arpha/shared'
 import type { Store } from '../db'
 import {
   type Extraction,
@@ -31,6 +31,8 @@ const MAX_REPLY_DEPTH = 3
 const HAS_CYRILLIC = /[А-Яа-яІіЇїЄєҐґ]/
 /** Ignore reports older than this (backfill beyond the useful horizon). */
 const MAX_AGE_MS = 3 * 60 * 60_000
+/** Reject geocodes this far from the linked track's last position. */
+const MAX_JUMP_KM = 120
 
 /**
  * Message → extraction → geocoding → fusion. Messages of one channel are
@@ -153,7 +155,14 @@ export class Pipeline {
       parentTrackIds.map((id) => tracker.get(id)?.position).find(Boolean) ??
       null
     const near: LatLon = anchor ?? ZAPORIZHZHIA
-    const look = (name: string | null) => (name ? gazetteer.lookup(name, { near }) : null)
+    // A name that only matches a homonym far outside the region is a miss, not a teleport.
+    const look = (name: string | null) => {
+      const place = name ? gazetteer.lookup(name, { near }) : null
+      if (!place || !inBbox(place)) return null
+      // Relative to a known track, a jump this large is a homonym, not a flight.
+      if (anchor && haversineKm(anchor, place) > MAX_JUMP_KM) return null
+      return place
+    }
     return {
       ...ev,
       locationPlace: look(ev.location),
