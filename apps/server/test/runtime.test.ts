@@ -177,6 +177,7 @@ describe('runtime', () => {
     await rt.start()
     rt.app.request('/api/push/subscribe', {
       method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://arpha.svitix.com' },
       body: JSON.stringify({
         subscription: { endpoint: 'https://push.example/1', keys: { p256dh: 'p', auth: 'a' } },
         points: [{ name: 'Дім', ...ZAPORIZHZHIA }],
