@@ -130,10 +130,12 @@ Push: `pnpm push:keys` → `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
 
 ## Деплой на Railway
 
-1. New Project → Deploy from GitHub repo → оберіть цей репозиторій (збірка за `Dockerfile`, `railway.json`).
+1. New Project → Deploy from GitHub repo → оберіть цей репозиторій (збірка за `Dockerfile` у корені; Root Directory — порожній).
 2. Додайте **Volume** з точкою монтування `/data` (SQLite: кеш повідомлень, треки, push-підписки).
 3. Задайте змінні з [`.env.example`](.env.example). Без Telegram-ключів можна стартувати з `DEMO_MODE=true`.
-4. Healthcheck: `GET /api/health`.
+4. Settings → Deploy: Healthcheck Path `/api/health` (таймаут 60 с), Restart Policy `On Failure` (10 спроб).
+   Налаштування зберігаються в самому сервісі Railway — файл `railway.json` не використовується
+   (Config as Code застарів).
 5. Регіон: `europe-west4` (ближче до користувачів і дата-центрів Telegram).
 6. Ресурси: сервіс обмежено **0,5 vCPU / 0,5 ГБ RAM** (`serviceInstanceLimitsUpdate`), купа Node — `NODE_OPTIONS=--max-old-space-size=320`.
 
