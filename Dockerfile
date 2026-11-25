@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ---- build: install the workspace, build the PWA and the server bundle ----
-FROM node:22-slim AS build
+FROM node:25-slim AS build
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH CI=true HUSKY=0
 RUN corepack enable
 WORKDIR /src
@@ -16,7 +16,7 @@ RUN pnpm --filter @arpha/web build && pnpm --filter @arpha/server build
 RUN pnpm --filter @arpha/server deploy --prod /out/server
 
 # ---- runtime: only what the server needs ----
-FROM node:22-slim AS runtime
+FROM node:25-slim AS runtime
 ENV NODE_ENV=production PORT=8080 DATA_DIR=/data WEB_DIST=/app/web
 WORKDIR /app
 COPY --from=build --chown=node:node /out/server ./server
