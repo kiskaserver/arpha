@@ -50,9 +50,17 @@ export class Boundaries {
       return this.features.filter((f) => f.kind === 'oblast').map((f) => f.id)
     }
     const kind = alert.locationType === 'raion' ? 'raion' : 'hromada'
-    const titleWords = new Set(words(alert.locationTitle))
+    const titleWords = words(alert.locationTitle)
+    const exact = this.features.filter(
+      (f) => f.kind === kind && titleWords.includes(words(f.name)[0] ?? ''),
+    )
+    if (exact.length || alert.locationType !== 'city') return exact.map((f) => f.id)
+    // "м. Запоріжжя" → "Запорізька … громада": the city noun and the hromada
+    // adjective share a stem (запориж-/запориз-, енергодар-/енергодарськ-).
+    const city = titleWords.filter((w) => w.length > 3).at(-1) ?? ''
+    const stem = city.slice(0, Math.max(4, city.length - 2))
     return this.features
-      .filter((f) => f.kind === kind && titleWords.has(words(f.name)[0] ?? ''))
+      .filter((f) => f.kind === 'hromada' && (words(f.name)[0] ?? '').startsWith(stem))
       .map((f) => f.id)
   }
 

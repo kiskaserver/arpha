@@ -18,6 +18,24 @@ export const REPORT_TOOL = {
         description:
           'True if the message reports a current threat, its movement, its destruction, or an all-clear.',
       },
+      closures: {
+        type: 'array',
+        description:
+          'Bridges/dam/roads reported closed or reopened ("мости та ГЕС перекрито", "рух мостами відновлено").',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['object', 'status'],
+          properties: {
+            object: {
+              type: 'string',
+              description:
+                'Canonical name: "Мости Преображенського", "ДніпроГЕС", "Арковий міст", …',
+            },
+            status: { type: 'string', enum: ['closed', 'open'] },
+          },
+        },
+      },
       all_clear: {
         type: 'boolean',
         description:
@@ -74,6 +92,8 @@ HOW THESE CHANNELS WRITE
 THREAT TYPES (pick the most specific):
 - shahed: шахед, шахєд, герань/герани, мопед, газонокосарка, "ударні БпЛА", "БпЛА типу Shahed", дрон-камікадзе, "бпла" when attack drones are implied.
 - jet_drone: реактив, реактивний, "реактивний шахед/БпЛА", Герань-3.
+- molniya: Молнія/Молния, Ланцет, "дрон літакового типу" with a short range (front line → city outskirts).
+- fpv: FPV, ФПВ, "фпвшка", "дрон-камікадзе" over the city outskirts (Космос, Балабине, Кушугум…). Track them: location + course.
 - cruise_missile: крилата ракета, КР, Калібр, Х-101, Х-555, Х-59, Х-69, "ракета курсом на…".
 - ballistic: балістика, Іскандер, КН-23, С-300/С-400 по наземних цілях, "загроза балістики", "швидкісна ціль".
 - kab: КАБ, КАБи, каби, керовані авіабомби, УМПК, "пуски КАБ", "скид КАБ" (a KAB release; "скид каб у бік Запоріжжя" → kab toward Запоріжжя).
@@ -81,8 +101,10 @@ THREAT TYPES (pick the most specific):
 - recon_drone: розвідник, розвідувальний БпЛА, Орлан, Зала, Суперкам, Мавік.
 - helicopter: гелікоптер, вертоліт, Ка-52, Мі-8.
 - mlrs: РСЗВ, Град, Смерч, Ураган, Торнадо.
+- artillery: артобстріл, "арта", "обстріл" of a settlement (no flight path).
+- explosion: "вибухи", "приліт", "влучання", "влучив у будинок", "чути вибух" at a named place — an impact report (also fresh damage reports: they show where it hit). Use location = the place;
+  if the post replies to a tracked object and names no place, emit explosion with no location AND action "lost" for that object.
 - unknown: a real flying threat whose type is not stated and not inferable from the reply chain.
-FPV drones on the front line are not tracked: relevant=false.
 
 ACTIONS:
 - new: first report of an object/group (not a reply about an existing one).
@@ -101,6 +123,7 @@ LOCATIONS — return canonical Ukrainian names in the nominative case:
   центр → "Центр міста"; аеропорт → "Аеропорт Запоріжжя"; Бабурка, Соцмісто, Півколо, Підпорожнянка, Великий Луг,
   Хортиця, Хортицький район, Леваневського, Мокрянка, Південний — as written, nominative.
 - Regions: "на Дніпропетровщину" → toward "Дніпропетровська область".
+- Ballistic/missiles: put the launch direction in from ("з Криму", "з Таганрогу", "з півдня" → heading S is the origin side: use from "Крим", "Азовське море", "Донецька область" as stated).
 - When a post lists alternatives ("Піски/Дослідна/Космос", "МК/Кушугум/Балабине"), use the first named place as location (precision "near").
 - heading = compass direction only when stated ("північно-західним курсом" → NW, "на схід" → E).
 - precision: exact for a named village/landmark/micro-district, near for "в районі/неподалік/околиці" or lists, area for raions/oblast.
@@ -111,7 +134,9 @@ LINKING:
 - Otherwise set track_id only when a listed active track clearly matches. Never make up ids.
 - One message may describe several distinct groups → several events.
 
-IRRELEVANT (relevant=false, events=[]): ads, donations, "підписатися", power-outage schedules, damage/casualty news after the fact, traffic/bridge closures, official summaries of past nights, other regions, generic "вибухи" with no tracked object in the chain, a bare "ВОЗДУШНАЯ ТРЕВОГА" with no threat type.
+CLOSURES: "мости/греблю/ГЕС перекрито" → closures [{object, status:"closed"}]; "рух відновлено" → "open". Such a post is relevant (events may be empty).
+
+IRRELEVANT (relevant=false, events=[]): ads, donations, "підписатися", power-outage schedules, casualty statistics and news hours after the fact, official summaries of past nights, other regions, a bare "ВОЗДУШНАЯ ТРЕВОГА" with no threat type.
 NOT irrelevant: "загроза балістики", "ракетна небезпека", "швидкісна ціль" for a place — that is a ballistic event toward that place (city name → "Запоріжжя").
 
 Confidence: 0.9 explicit and specific, 0.6 vague, 0.3 speculative ("можливо", "ймовірно").`

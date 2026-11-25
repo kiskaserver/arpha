@@ -1,7 +1,16 @@
-import { type LatLon, REGION_BBOX, THREAT_TYPES, type Track, ZAPORIZHZHIA } from '@arpha/shared'
-import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
+import {
+  type Hotspot,
+  type InfraStatus,
+  type LatLon,
+  REGION_BBOX,
+  THREAT_TYPES,
+  type Track,
+  ZAPORIZHZHIA,
+} from '@arpha/shared'
+import type { ExpressionSpecification, GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import { buildFrame, circlePolygon, type Feature, fc, frameInterval, MIN_FRAME_MS } from './frame'
-import { DESTROYED_SVG, iconId, iconSvg } from './icons'
+import { DESTROYED_SVG, iconId, iconSvg, infraSvg } from './icons'
+import { ALERT_COLORS } from './map-colors'
 import type { MotionModel } from './motion'
 
 type MapLibre = typeof import('maplibre-gl')
@@ -12,6 +21,10 @@ const STYLE_LIGHT = 'https://tiles.openfreemap.org/styles/positron'
 export interface MapCallbacks {
   onSelect(id: string | null): void
   onPick(point: LatLon): void
+}
+
+export interface MapPoint extends LatLon {
+  name: string
 }
 
 /**
@@ -25,8 +38,13 @@ export class MapController {
   #tracks: () => Iterable<Track> = () => []
   #motion: MotionModel | null = null
   #selected: string | null = null
-  #alerted = new Set<string>()
-  #observer: { point: LatLon | null; radiusKm: number } = { point: null, radiusKm: 15 }
+  /** featureId → alert_type. */
+  #alerted = new Map<string, string>()
+  #points: MapPoint[] = []
+  #radiusKm = 15
+  #infra: InfraStatus[] = []
+  #hotspots: Hotspot[] | null = null
+  #lingerMin = 2
   #picking = false
   #raf = 0
   #timer: ReturnType<typeof setTimeout> | null = null
@@ -60,7 +78,7 @@ export class MapController {
       center: [ZAPORIZHZHIA.lon, ZAPORIZHZHIA.lat - 0.4],
       zoom: 7.4,
       minZoom: 6,
-      maxZoom: 14,
+      maxZoom: 15,
       maxBounds: [
         [w - 1.5, s - 1],
         [e + 1.5, n + 1],
@@ -85,7 +103,9 @@ export class MapController {
       void this.#setupLayers().then(() => {
         this.#ready = true
         this.#applyAlerts()
-        this.#applyObserver()
+        this.#applyPoints()
+        this.#applyInfra()
+        this.#applyHotspots()
         this.invalidate()
       })
     })
@@ -114,7 +134,8 @@ export class MapController {
     const map = this.#map
     // style.load can fire more than once for the same style; layers survive until setStyle.
     if (map.getSource('threats')) return
-    // Ukrainian labels on the basemap.
+    // Ukrainian, legible basemap labels: one language, solid halo (people complained the
+    // labels "doubled" and were hard to read).
     for (const layer of map.getStyle().layers ?? []) {
       if (layer.type === 'symbol' && map.getLayoutProperty(layer.id, 'text-field')) {
         map.setLayoutProperty(layer.id, 'text-field', [
@@ -122,49 +143,61 @@ export class MapController {
           ['get', 'name:uk'],
           ['get', 'name'],
         ])
+        map.setPaintProperty(layer.id, 'text-halo-width', 1.6)
+        map.setPaintProperty(layer.id, 'text-halo-color', this.#dark ? '#0b1220' : '#ffffff')
       }
     }
 
     const pixelRatio = 2
-    await Promise.all([
-      ...THREAT_TYPES.map(async (t) => {
-        if (!map.hasImage(iconId(t)))
-          map.addImage(iconId(t), await rasterize(iconSvg(t)), { pixelRatio })
+    const images: [string, string][] = [
+      ...THREAT_TYPES.map((t) => [iconId(t), iconSvg(t)] as [string, string]),
+      ['destroyed', DESTROYED_SVG],
+      ['infra-closed', infraSvg('closed')],
+      ['infra-open', infraSvg('open')],
+    ]
+    await Promise.all(
+      images.map(async ([id, svg]) => {
+        if (!map.hasImage(id)) map.addImage(id, await rasterize(svg), { pixelRatio })
       }),
-      (async () => {
-        if (!map.hasImage('destroyed'))
-          map.addImage('destroyed', await rasterize(DESTROYED_SVG), { pixelRatio })
-      })(),
-    ])
+    )
 
     const empty = fc([])
     map.addSource('boundaries', { type: 'geojson', data: '/boundaries.geojson', promoteId: 'id' })
-    map.addSource('observer', { type: 'geojson', data: empty })
-    map.addSource('vectors', { type: 'geojson', data: empty })
-    map.addSource('targets', { type: 'geojson', data: empty })
-    map.addSource('uncertainty', { type: 'geojson', data: empty })
-    map.addSource('threats', { type: 'geojson', data: empty })
+    for (const id of [
+      'observer',
+      'hotspots',
+      'cones',
+      'impacts',
+      'vectors',
+      'targets',
+      'uncertainty',
+      'predicted',
+      'infra',
+      'threats',
+    ]) {
+      map.addSource(id, { type: 'geojson', data: empty })
+    }
 
-    const alertRed = '#ff3b30'
+    const alertColor = [
+      'match',
+      ['feature-state', 'alert'],
+      ...Object.entries(ALERT_COLORS).flat(),
+      '#ff3b30',
+    ] as unknown as ExpressionSpecification
+    const alerted: ExpressionSpecification = ['to-boolean', ['feature-state', 'alert']]
     map.addLayer({
       id: 'alert-fill',
       type: 'fill',
       source: 'boundaries',
       filter: ['!=', ['get', 'kind'], 'oblast'],
-      paint: {
-        'fill-color': alertRed,
-        'fill-opacity': ['case', ['boolean', ['feature-state', 'alert'], false], 0.16, 0],
-      },
+      paint: { 'fill-color': alertColor, 'fill-opacity': ['case', alerted, 0.16, 0] },
     })
     map.addLayer({
       id: 'alert-oblast-fill',
       type: 'fill',
       source: 'boundaries',
       filter: ['==', ['get', 'kind'], 'oblast'],
-      paint: {
-        'fill-color': alertRed,
-        'fill-opacity': ['case', ['boolean', ['feature-state', 'alert'], false], 0.1, 0],
-      },
+      paint: { 'fill-color': alertColor, 'fill-opacity': ['case', alerted, 0.1, 0] },
     })
     map.addLayer({
       id: 'hromada-line',
@@ -183,9 +216,18 @@ export class MapController {
       type: 'line',
       source: 'boundaries',
       filter: ['==', ['get', 'kind'], 'oblast'],
+      paint: { 'line-color': ['case', alerted, alertColor, '#f5a524'], 'line-width': 2 },
+    })
+    map.addLayer({
+      id: 'hotspots',
+      type: 'heatmap',
+      source: 'hotspots',
+      maxzoom: 13,
       paint: {
-        'line-color': ['case', ['boolean', ['feature-state', 'alert'], false], alertRed, '#f5a524'],
-        'line-width': 2,
+        'heatmap-weight': ['interpolate', ['linear'], ['get', 'count'], 1, 0.2, 30, 1],
+        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 6, 0.6, 12, 2],
+        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 6, 14, 12, 40],
+        'heatmap-opacity': 0.55,
       },
     })
     map.addLayer({
@@ -193,7 +235,7 @@ export class MapController {
       type: 'fill',
       source: 'observer',
       filter: ['==', ['get', 'kind'], 'radius'],
-      paint: { 'fill-color': '#0a84ff', 'fill-opacity': 0.06 },
+      paint: { 'fill-color': '#0a84ff', 'fill-opacity': 0.05 },
     })
     map.addLayer({
       id: 'observer-radius-line',
@@ -203,16 +245,25 @@ export class MapController {
       paint: { 'line-color': '#0a84ff', 'line-width': 1, 'line-dasharray': [2, 2] },
     })
     map.addLayer({
-      id: 'observer-point',
-      type: 'circle',
-      source: 'observer',
-      filter: ['==', ['get', 'kind'], 'point'],
+      id: 'cones',
+      type: 'fill',
+      source: 'cones',
       paint: {
-        'circle-radius': 7,
-        'circle-color': '#0a84ff',
-        'circle-stroke-color': '#fff',
-        'circle-stroke-width': 2.5,
+        'fill-color': ['get', 'color'],
+        'fill-opacity': ['case', ['get', 'selected'], 0.2, 0.08],
       },
+    })
+    map.addLayer({
+      id: 'impacts',
+      type: 'fill',
+      source: 'impacts',
+      paint: { 'fill-color': '#ff3b30', 'fill-opacity': ['case', ['get', 'selected'], 0.28, 0.14] },
+    })
+    map.addLayer({
+      id: 'impacts-line',
+      type: 'line',
+      source: 'impacts',
+      paint: { 'line-color': '#ff3b30', 'line-width': 1.5, 'line-dasharray': [1, 1] },
     })
     map.addLayer({
       id: 'uncertainty',
@@ -242,6 +293,81 @@ export class MapController {
         'circle-opacity': 0.15,
         'circle-stroke-color': ['get', 'color'],
         'circle-stroke-width': 3,
+      },
+    })
+    map.addLayer({
+      id: 'predicted',
+      type: 'circle',
+      source: 'predicted',
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['get', 'p'], 0, 5, 1, 11],
+        'circle-color': 'rgba(0,0,0,0)',
+        'circle-stroke-color': ['get', 'color'],
+        'circle-stroke-width': 2.5,
+      },
+    })
+    map.addLayer({
+      id: 'predicted-label',
+      type: 'symbol',
+      source: 'predicted',
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': 12,
+        'text-offset': [0, 1.4],
+        'text-allow-overlap': true,
+      },
+      paint: {
+        'text-color': this.#dark ? '#fff' : '#111',
+        'text-halo-color': this.#dark ? '#0b1220' : '#fff',
+        'text-halo-width': 2,
+      },
+    })
+    map.addLayer({
+      id: 'observer-point',
+      type: 'circle',
+      source: 'observer',
+      filter: ['==', ['get', 'kind'], 'point'],
+      paint: {
+        'circle-radius': 7,
+        'circle-color': '#0a84ff',
+        'circle-stroke-color': '#fff',
+        'circle-stroke-width': 2.5,
+      },
+    })
+    map.addLayer({
+      id: 'observer-label',
+      type: 'symbol',
+      source: 'observer',
+      filter: ['==', ['get', 'kind'], 'point'],
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': 12,
+        'text-offset': [0, 1.3],
+        'text-anchor': 'top',
+      },
+      paint: { 'text-color': '#0a84ff', 'text-halo-color': '#fff', 'text-halo-width': 2 },
+    })
+    map.addLayer({
+      id: 'infra',
+      type: 'symbol',
+      source: 'infra',
+      layout: {
+        'icon-image': ['concat', 'infra-', ['get', 'status']],
+        'icon-size': 0.45,
+        'icon-allow-overlap': true,
+        'text-field': ['get', 'label'],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': 11,
+        'text-offset': [0, 1.6],
+        'text-anchor': 'top',
+        'text-optional': true,
+      },
+      paint: {
+        'text-color': ['match', ['get', 'status'], 'closed', '#ff3b30', '#30d158'],
+        'text-halo-color': this.#dark ? '#0b1220' : '#fff',
+        'text-halo-width': 2,
       },
     })
     map.addLayer({
@@ -297,47 +423,84 @@ export class MapController {
     this.#map.setStyle(dark ? STYLE_DARK : STYLE_LIGHT)
   }
 
-  setAlerts(featureIds: Set<string>): void {
-    this.#alerted = featureIds
+  /** featureId → alert_type. */
+  setAlerts(alerted: Map<string, string>): void {
+    this.#alerted = alerted
     this.#applyAlerts()
   }
 
   #applyAlerts(): void {
-    if (!this.#ready) return
-    const src = this.#map.getSource('boundaries') as GeoJSONSource | undefined
-    if (!src) return
+    if (!this.#ready || !this.#map.getSource('boundaries')) return
     const apply = () => {
       this.#map.removeFeatureState({ source: 'boundaries' })
-      for (const id of this.#alerted)
-        this.#map.setFeatureState({ source: 'boundaries', id }, { alert: true })
+      for (const [id, type] of this.#alerted) {
+        this.#map.setFeatureState({ source: 'boundaries', id }, { alert: type })
+      }
     }
     if (this.#map.isSourceLoaded('boundaries')) apply()
     else this.#map.once('sourcedata', () => this.#applyAlerts())
   }
 
-  setObserver(point: LatLon | null, radiusKm: number): void {
-    this.#observer = { point, radiusKm }
-    this.#applyObserver()
+  setPoints(points: MapPoint[], radiusKm: number): void {
+    this.#points = points
+    this.#radiusKm = radiusKm
+    this.#applyPoints()
   }
 
-  #applyObserver(): void {
+  #applyPoints(): void {
     if (!this.#ready) return
-    const { point, radiusKm } = this.#observer
-    const features: Feature[] = point
-      ? [
-          {
-            type: 'Feature',
-            geometry: circlePolygon(point, radiusKm),
-            properties: { kind: 'radius' },
-          },
-          {
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [point.lon, point.lat] },
-            properties: { kind: 'point' },
-          },
-        ]
-      : []
+    const features: Feature[] = this.#points.flatMap((p) => [
+      {
+        type: 'Feature',
+        geometry: circlePolygon(p, this.#radiusKm),
+        properties: { kind: 'radius' },
+      },
+      {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+        properties: { kind: 'point', name: p.name },
+      },
+    ])
     ;(this.#map.getSource('observer') as GeoJSONSource).setData(fc(features))
+  }
+
+  setInfra(items: InfraStatus[]): void {
+    this.#infra = items
+    this.#applyInfra()
+  }
+
+  #applyInfra(): void {
+    if (!this.#ready) return
+    const features: Feature[] = this.#infra.map((i) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [i.lon, i.lat] },
+      properties: {
+        status: i.status,
+        label: `${i.name}: ${i.status === 'closed' ? 'перекрито' : 'відкрито'}`,
+      },
+    }))
+    ;(this.#map.getSource('infra') as GeoJSONSource).setData(fc(features))
+  }
+
+  /** null hides the layer. */
+  setHotspots(data: Hotspot[] | null): void {
+    this.#hotspots = data
+    this.#applyHotspots()
+  }
+
+  #applyHotspots(): void {
+    if (!this.#ready) return
+    const features: Feature[] = (this.#hotspots ?? []).map((h) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [h.lon, h.lat] },
+      properties: { count: h.count },
+    }))
+    ;(this.#map.getSource('hotspots') as GeoJSONSource).setData(fc(features))
+  }
+
+  setLinger(min: number): void {
+    this.#lingerMin = min
+    this.invalidate()
   }
 
   setPicking(on: boolean): void {
@@ -349,7 +512,7 @@ export class MapController {
     this.#selected = id
     this.invalidate()
     if (!id || !fly || !this.#motion) return
-    const pose = this.#motion.pose(id, Date.now())
+    const pose = this.#motion.pose(id)
     if (pose)
       this.#map.easeTo({
         center: [pose.lon, pose.lat],
@@ -382,33 +545,39 @@ export class MapController {
     this.#raf = 0
     if (!this.#ready || !this.#motion || document.hidden) return
     const now = Date.now()
+    this.#motion.advance(now)
     const frame = buildFrame({
       tracks: this.#tracks(),
       motion: this.#motion,
       now,
       selected: this.#selected,
+      lingerMin: this.#lingerMin,
     })
-    ;(this.#map.getSource('threats') as GeoJSONSource).setData(fc(frame.points))
-    ;(this.#map.getSource('vectors') as GeoJSONSource).setData(fc(frame.vectors))
-    ;(this.#map.getSource('targets') as GeoJSONSource).setData(fc(frame.targets))
-    ;(this.#map.getSource('uncertainty') as GeoJSONSource).setData(
-      fc(
-        frame.selectedPose
-          ? [
-              {
-                type: 'Feature',
-                geometry: circlePolygon(frame.selectedPose, frame.selectedPose.uncertaintyKm, 32),
-                properties: {},
-              },
-            ]
-          : [],
-      ),
+    const set = (id: string, features: Feature[]) =>
+      (this.#map.getSource(id) as GeoJSONSource).setData(fc(features))
+    set('threats', frame.points)
+    set('vectors', frame.vectors)
+    set('targets', frame.targets)
+    set('cones', frame.cones)
+    set('impacts', frame.impacts)
+    set('predicted', frame.predicted)
+    set(
+      'uncertainty',
+      frame.selectedPose
+        ? [
+            {
+              type: 'Feature',
+              geometry: circlePolygon(frame.selectedPose, frame.selectedPose.uncertaintyKm, 32),
+              properties: {},
+            },
+          ]
+        : [],
     )
     this.#lastFrame = t
 
-    const blending = this.#motion.isBlending(now)
-    if (!blending && frame.maxSpeed === 0) return
-    const interval = blending
+    const settling = this.#motion.isSettling()
+    if (!settling && frame.maxSpeed === 0) return
+    const interval = settling
       ? MIN_FRAME_MS
       : frameInterval(frame.maxSpeed, this.#map.getZoom(), this.#map.getCenter().lat)
     // Exactly one pending timer, or external invalidations would multiply the loop.

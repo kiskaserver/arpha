@@ -1,5 +1,9 @@
 <script lang="ts">
-import type { ActiveAlert } from '@arpha/shared'
+import {
+  type ActiveAlert,
+  ALERT_TYPE_LABELS_UK,
+  OFFICIAL_THREAT_LABELS_UK,
+} from '@arpha/shared'
 import { uk } from '../lib/i18n'
 import type { ConnectionStatus } from '../lib/stream'
 import type { AlertLevel } from '../lib/view'
@@ -21,6 +25,15 @@ const label = $derived(
       : level === 'none'
         ? uk.alertNone
         : uk.alertUnknown,
+)
+const summary = $derived(
+  [
+    ...new Set(
+      alerts.flatMap((a) => a.threats.map((t) => OFFICIAL_THREAT_LABELS_UK[t.type] ?? t.type)),
+    ),
+  ]
+    .slice(0, 3)
+    .join(', '),
 )
 const connLabel = $derived(
   status === 'online'
@@ -49,6 +62,7 @@ const connLabel = $derived(
   >
     <span class="pulse" aria-hidden="true"></span>
     <span class="text">{label}</span>
+    {#if summary}<span class="sub">{summary}</span>{/if}
     {#if alerts.length > 1}<span class="count">{alerts.length}</span>{/if}
   </button>
 
@@ -60,7 +74,17 @@ const connLabel = $derived(
   {#if open && alerts.length}
     <ul class="alert-list" aria-label={uk.alertsList}>
       {#each alerts as a (a.id)}
-        <li>{a.locationTitle}</li>
+        <li class:yellow={a.level === 'yellow'} class:other={a.alertType !== 'air_raid'}>
+          <span class="loc">{a.locationTitle}</span>
+          <span class="kind">
+            {ALERT_TYPE_LABELS_UK[a.alertType] ?? a.alertType}{a.level ? ` · ${uk.level(a.level)}` : ''}
+          </span>
+          {#if a.threats.length}
+            <span class="threats">
+              {#each a.threats as t (t.type)}<b>{OFFICIAL_THREAT_LABELS_UK[t.type] ?? t.type}</b>{/each}
+            </span>
+          {/if}
+        </li>
       {/each}
     </ul>
   {/if}
@@ -191,11 +215,46 @@ const connLabel = $derived(
     overflow: auto;
   }
   .alert-list li {
-    padding: 4px 0;
+    display: flex;
+    flex-direction: column;
+    padding: 6px 0 6px 14px;
+    border-left: 3px solid var(--danger);
+    margin: 4px 0;
   }
-  .alert-list li::before {
-    content: '● ';
-    color: var(--danger);
+  .alert-list li.yellow {
+    border-color: #ffcc00;
+  }
+  .alert-list li.other {
+    border-color: #ff9500;
+  }
+  .loc {
+    font-weight: 600;
+  }
+  .kind {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .threats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 3px;
+  }
+  .threats b {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--danger) 18%, transparent);
+    color: var(--text);
+  }
+  .sub {
+    font-size: 12px;
+    font-weight: 500;
+    opacity: 0.9;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .offline {
     position: absolute;

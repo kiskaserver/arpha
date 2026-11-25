@@ -71,6 +71,8 @@ describe('Boundaries', () => {
     ['raion', 'Пологівський район', ['Пологівський район']],
     ['hromada', 'Вільнянська територіальна громада', ['Вільнянська міська громада']],
     ['city', 'м. Запоріжжя та Запорізька територіальна громада', ['Запорізька міська громада']],
+    ['city', 'м. Запоріжжя', ['Запорізька міська громада']],
+    ['city', 'м. Енергодар', ['Енергодарська міська громада']],
     [
       'hromada',
       "Кам'янсько-Дніпровська територіальна громада",
@@ -206,6 +208,7 @@ describe('AlertsService', () => {
         pollMs: 10_000,
         logger: silentLogger,
         fetch: fetchFn,
+        random: () => 0.5,
       })
       svc.start()
       svc.start() // idempotent
@@ -219,6 +222,100 @@ describe('AlertsService', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('parses alert levels and official threats; diffs newly added threats', () => {
+    const t = (type: string) => ({
+      threat_type: type,
+      level: 'red',
+      started_at: '2026-11-25T00:00:00Z',
+      source_message: 'msg',
+    })
+    const before = parseAlerts({
+      alerts: [raw({ id: 1, alert_level: 'red', threats: [t('drones')] })],
+    })
+    expect(before[0]).toMatchObject({
+      level: 'red',
+      threats: [{ type: 'drones', level: 'red', message: 'msg' }],
+    })
+    const after = parseAlerts({
+      alerts: [
+        raw({
+          id: 1,
+          alert_level: 'red',
+          threats: [
+            t('drones'),
+            t('ballistic_missiles'),
+            { ...t('x'), finished_at: '2026-11-25T01:00:00Z' },
+            'junk',
+          ],
+        }),
+      ],
+    })
+    const d = diffAlerts(before, after)
+    expect(d.threatsAdded.map((x) => x.threat.type)).toEqual(['ballistic_missiles'])
+    expect(d.started).toEqual([])
+  })
+
+  it('republishes when only threats change', async () => {
+    const onChange = vi.fn()
+    const body = (threats: unknown[]) => ({ alerts: [raw({ id: 1, threats })] })
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(okResponse(body([]).alerts))
+      .mockResolvedValueOnce(okResponse(body([{ threat_type: 'drones' }]).alerts))
+    const svc = new AlertsService({
+      token: 't',
+      pollMs: 1,
+      logger: silentLogger,
+      fetch: fetchFn,
+      onChange,
+    })
+    await svc.poll()
+    await svc.poll()
+    expect(onChange).toHaveBeenCalledTimes(2)
+  })
+
+  it('jitters the poll interval ±15 % and never polls faster than allowed', () => {
+    const at = (r: number) =>
+      new AlertsService({
+        token: 't',
+        pollMs: 30_000,
+        logger: silentLogger,
+        random: () => r,
+      }).nextDelay()
+    expect(at(0)).toBeCloseTo(25_500)
+    expect(at(0.5)).toBeCloseTo(30_000)
+    expect(at(1)).toBeCloseTo(34_500)
+  })
+
+  it('honours Retry-After on 429 and pauses after auth errors', async () => {
+    let now = 0
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('', { status: 429, headers: { 'retry-after': '120' } }))
+      .mockResolvedValueOnce(new Response('', { status: 401 }))
+      .mockResolvedValueOnce(new Response('', { status: 429 }))
+    const svc = new AlertsService({
+      token: 't',
+      pollMs: 30_000,
+      logger: silentLogger,
+      fetch: fetchFn,
+      now: () => now,
+      random: () => 0.5,
+    })
+    await svc.poll()
+    expect(svc.nextDelay()).toBeGreaterThanOrEqual(120_000)
+    now = 60_000
+    await svc.poll() // still paused: no request
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    now = 121_000
+    await svc.poll() // 401 → 15 min pause
+    expect(svc.nextDelay()).toBeGreaterThanOrEqual(14 * 60_000)
+    now += 16 * 60_000
+    await svc.poll() // 429 without Retry-After → 2 min
+    expect(svc.nextDelay()).toBeGreaterThanOrEqual(2 * 60_000 - 1)
+    expect(fetchFn).toHaveBeenCalledTimes(3)
   })
 
   it('set() publishes demo alerts', () => {

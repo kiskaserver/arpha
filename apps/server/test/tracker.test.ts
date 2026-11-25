@@ -99,6 +99,27 @@ describe('Tracker', () => {
     expect(onRemove).toHaveBeenCalledWith(a)
   })
 
+  it('"впали каби" marks an impact where they fell', () => {
+    const { tracker } = setup()
+    const [a] = tracker.apply([resolved({ type: 'kab', location: 'Космічний' })], ctx(0))
+    tracker.apply([resolved({ type: 'kab', action: 'lost' })], ctx(1, { parentTrackIds: [a!] }))
+    const boom = tracker.active().find((t) => t.type === 'explosion')!
+    expect(boom).toMatchObject({ placeName: 'Космічний' })
+    expect(tracker.get(a!)!.status).toBe('lost')
+    // With an explicit place and no tracked KAB.
+    tracker.apply([resolved({ type: 'kab', action: 'lost', location: 'Балабине' })], ctx(2))
+    expect(
+      tracker
+        .active()
+        .filter((t) => t.type === 'explosion')
+        .map((t) => t.placeName),
+    ).toEqual(['Космічний', 'Балабине'])
+    // A lost shahed is not an impact.
+    const [s] = tracker.apply([resolved({ location: 'Оріхів' })], ctx(3))
+    tracker.apply([resolved({ action: 'lost' })], ctx(4, { parentTrackIds: [s!] }))
+    expect(tracker.active().filter((t) => t.type === 'explosion')).toHaveLength(2)
+  })
+
   it('partial destruction decrements the count', () => {
     const { tracker } = setup()
     const [a] = tracker.apply([resolved({ location: 'Оріхів', count: 5 })], ctx(0))

@@ -104,6 +104,11 @@ export const DEMO_ALERT: Omit<ActiveAlert, 'featureIds' | 'startedAt'> = {
   locationType: 'oblast',
   locationUid: '12',
   alertType: 'air_raid',
+  level: 'red',
+  threats: [
+    { type: 'drones', level: 'red', startedAt: 0, message: 'Загроза ударних БпЛА' },
+    { type: 'guided_aerial_bombs', level: 'red', startedAt: 0, message: 'Загроза КАБ' },
+  ],
 }
 
 export class DemoSimulator {

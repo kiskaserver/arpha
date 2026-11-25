@@ -2,7 +2,6 @@
 import { formatMinutesUk, threatLabelUk } from '@arpha/shared'
 import {
   formatAgo,
-  formatClock,
   formatCourse,
   formatDistance,
   formatEta,
@@ -10,6 +9,7 @@ import {
 } from '../lib/format'
 import { uk } from '../lib/i18n'
 import type { ThreatRow } from '../lib/view'
+import SourceChip from './SourceChip.svelte'
 import ThreatIcon from './ThreatIcon.svelte'
 
 interface Props {
@@ -67,8 +67,26 @@ const a = $derived(row.approach)
     <div><dt>{uk.course}</dt><dd>{formatCourse(t)}</dd></div>
     {#if t.placeName}<div><dt>{uk.place}</dt><dd>{t.placeName}</dd></div>{/if}
     {#if t.target && a}<div><dt>{uk.target}</dt><dd>{t.target.name}</dd></div>{/if}
+    {#if t.origin}<div><dt>{uk.origin}</dt><dd>{uk.fromSide(t.origin.name)}</dd></div>{/if}
+    {#if t.prediction?.impact}<div><dt>{uk.impactZone}</dt><dd>~{t.prediction.impact.radiusKm} {uk.km}</dd></div>{/if}
     <div><dt>{uk.confidence}</dt><dd>{Math.round(t.confidence * 100)}%</dd></div>
   </dl>
+
+  {#if t.status === 'active' && t.prediction?.targets.length}
+    <section class="predict" data-testid="likely-targets">
+      <h3>{uk.likelyTargets}</h3>
+      <ul>
+        {#each t.prediction.targets as c (c.name)}
+          <li>
+            <span class="bar" style:width={`${Math.round(c.p * 100)}%`}></span>
+            <span class="tname">{c.name}</span>
+            <span class="tmeta">{Math.round(c.p * 100)}%{c.etaMin !== null ? ` · ~${formatMinutesUk(c.etaMin)}` : ''}</span>
+          </li>
+        {/each}
+      </ul>
+      <p class="hint">{uk.likelyTargetsHint}</p>
+    </section>
+  {/if}
 
   {#if t.sources.length}
     <section class="sources">
@@ -76,16 +94,7 @@ const a = $derived(row.approach)
       <ul>
         {#each t.sources as s (s.channel + s.messageId)}
           <li>
-            <div class="src-head">
-              {#if s.channel === 'demo'}
-                <span>{s.channelTitle}</span>
-              {:else}
-                <a href={`https://t.me/${s.channel}/${s.messageId}`} target="_blank" rel="noopener noreferrer"
-                  >{s.channelTitle}</a
-                >
-              {/if}
-              <time datetime={new Date(s.at).toISOString()}>{formatClock(s.at)}</time>
-            </div>
+            <SourceChip channel={s.channel} title={s.channelTitle} messageId={s.messageId} at={s.at} />
             <p>{s.text}</p>
           </li>
         {/each}
@@ -172,6 +181,7 @@ const a = $derived(row.approach)
   .eta.hot dd {
     color: var(--danger);
   }
+  .predict h3,
   .sources h3 {
     margin: 0 0 6px;
     font-size: 13px;
@@ -192,15 +202,45 @@ const a = $derived(row.approach)
     background: var(--chip);
     font-size: 14px;
   }
-  .src-head {
+  .predict ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .predict li {
+    position: relative;
     display: flex;
     justify-content: space-between;
     gap: 8px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: var(--chip);
+    overflow: hidden;
+    font-size: 14px;
+  }
+  .bar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: color-mix(in srgb, var(--danger) 22%, transparent);
+  }
+  .tname,
+  .tmeta {
+    position: relative;
+  }
+  .tname {
+    font-weight: 600;
+  }
+  .tmeta {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .hint {
+    margin: 4px 0 0;
     font-size: 12px;
     color: var(--muted);
-  }
-  .src-head a {
-    color: var(--link);
   }
   .sources p {
     margin: 4px 0 0;

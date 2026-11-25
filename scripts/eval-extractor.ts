@@ -18,6 +18,7 @@ process.loadEnvFile?.('.env')
 interface Expected {
   relevant: boolean
   all_clear?: boolean
+  closures?: { object: string; status: 'closed' | 'open' }[]
   /** `place` accepts either location or toward ("на X" is genuinely ambiguous). */
   events?: {
     type?: string
@@ -25,6 +26,7 @@ interface Expected {
     location?: string
     toward?: string
     place?: string
+    from?: string
     count?: number
   }[]
 }
@@ -77,6 +79,11 @@ for (const c of cases) {
   const got = await extractor.extract(input)
   const checks: boolean[] = [got.relevant === c.expected.relevant]
   if (c.expected.all_clear !== undefined) checks.push(got.all_clear === c.expected.all_clear)
+  for (const want of c.expected.closures ?? []) {
+    checks.push(
+      got.closures.some((x) => x.status === want.status && samePlace(x.object, want.object)),
+    )
+  }
   for (const [i, e] of (c.expected.events ?? []).entries()) {
     const g = got.events[i]
     if (e.type) checks.push(g?.type === e.type)
@@ -85,6 +92,7 @@ for (const c of cases) {
     if (e.location) checks.push(samePlace(g?.location, e.location))
     if (e.toward) checks.push(samePlace(g?.toward, e.toward))
     if (e.place) checks.push(samePlace(g?.location, e.place) || samePlace(g?.toward, e.place))
+    if (e.from) checks.push(samePlace(g?.from, e.from))
     if (e.count) checks.push(g?.count === e.count)
   }
   const ok = checks.filter(Boolean).length

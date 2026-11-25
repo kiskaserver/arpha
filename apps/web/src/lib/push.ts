@@ -1,14 +1,15 @@
-import type { LatLon } from '@arpha/shared'
+import type { LatLon, ThreatClass } from '@arpha/shared'
 
 export type PushResult =
   | { ok: true }
   | { ok: false; reason: 'unsupported' | 'denied' | 'unavailable' | 'failed' }
 
 export interface PushPrefs {
-  point: LatLon | null
+  points: (LatLon & { name: string })[]
   radiusKm: number
   alerts: boolean
   threats: boolean
+  classes: ThreatClass[]
 }
 
 export interface PushEnv {

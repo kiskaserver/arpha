@@ -1,45 +1,96 @@
-import type { LatLon } from '@arpha/shared'
+import { type LatLon, THREAT_CLASSES, type ThreatClass } from '@arpha/shared'
 
 export type Theme = 'auto' | 'light' | 'dark'
+export type SoundId = 'off' | 'soft' | 'chime' | 'siren'
+export type SoundCategory = 'alert' | 'ballistic' | 'threat'
+
+export interface SavedPoint extends LatLon {
+  id: string
+  name: string
+}
 
 export interface Settings {
-  point: LatLon | null
-  pointSource: 'gps' | 'manual' | null
+  /** Watched places ("Дім", "Робота"); the first one is the reference for ETA in the list. */
+  points: SavedPoint[]
   radiusKm: number
   theme: Theme
   pushEnabled: boolean
   pushAlerts: boolean
   pushThreats: boolean
+  /** Threat classes to be notified about (push and in-app). */
+  classes: ThreatClass[]
+  /** In-app sounds while the app is open (system push sounds can't be customised). */
+  sounds: Record<SoundCategory, SoundId>
+  vibrate: boolean
+  /** Visual alerts for people with hearing impairment: the screen border flashes. */
+  flash: boolean
+  /** Read new threats aloud (Ukrainian voice, foreground only). */
+  speak: boolean
+  /** How long destroyed/lost targets stay on the map, minutes (0 = disappear at once). */
+  lingerMin: number
+  /** Show where threats were reported most in the last 30 days. */
+  hotspots: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  point: null,
-  pointSource: null,
+  points: [],
   radiusKm: 15,
   theme: 'auto',
   pushEnabled: false,
   pushAlerts: true,
   pushThreats: true,
+  classes: [...THREAT_CLASSES],
+  sounds: { alert: 'chime', ballistic: 'siren', threat: 'soft' },
+  vibrate: true,
+  flash: false,
+  speak: false,
+  lingerMin: 2,
+  hotspots: false,
 }
 
 const KEY = 'arpha:settings:v1'
+const MAX_POINTS = 5
+const SOUNDS: SoundId[] = ['off', 'soft', 'chime', 'siren']
+
+const validPoint = (p: unknown): p is SavedPoint => {
+  const x = p as SavedPoint
+  return Boolean(
+    x && Number.isFinite(x.lat) && Number.isFinite(x.lon) && typeof x.name === 'string' && x.name,
+  )
+}
+
+export const newPointId = () => Math.random().toString(36).slice(2, 10)
 
 /** Per-device preferences. Storage may be unavailable (private mode) — never throw. */
 export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStorage()): Settings {
   try {
     const raw = storage?.getItem(KEY)
-    if (!raw) return { ...DEFAULT_SETTINGS }
-    const parsed = JSON.parse(raw) as Partial<Settings>
-    const s = { ...DEFAULT_SETTINGS, ...parsed }
-    if (s.point && !(Number.isFinite(s.point.lat) && Number.isFinite(s.point.lon))) {
-      s.point = null
-      s.pointSource = null
+    if (!raw) return structuredClone(DEFAULT_SETTINGS)
+    const parsed = JSON.parse(raw) as Partial<Settings> & { point?: LatLon | null }
+    const s: Settings = { ...structuredClone(DEFAULT_SETTINGS), ...parsed }
+    // v1 stored a single `point`.
+    if (!parsed.points && parsed.point) {
+      s.points = [{ ...parsed.point, id: newPointId(), name: 'Моя точка' }]
     }
+    delete (s as { point?: unknown }).point
+    delete (s as { pointSource?: unknown }).pointSource
+    s.points = (Array.isArray(s.points) ? s.points : [])
+      .filter(validPoint)
+      .slice(0, MAX_POINTS)
+      .map((p) => ({ ...p, id: p.id || newPointId() }))
     s.radiusKm = Math.min(100, Math.max(1, Number(s.radiusKm) || DEFAULT_SETTINGS.radiusKm))
     if (!['auto', 'light', 'dark'].includes(s.theme)) s.theme = 'auto'
+    s.classes = (Array.isArray(s.classes) ? s.classes : DEFAULT_SETTINGS.classes).filter((c) =>
+      THREAT_CLASSES.includes(c),
+    )
+    s.sounds = { ...DEFAULT_SETTINGS.sounds, ...(s.sounds ?? {}) }
+    for (const k of Object.keys(s.sounds) as SoundCategory[]) {
+      if (!SOUNDS.includes(s.sounds[k])) s.sounds[k] = DEFAULT_SETTINGS.sounds[k]
+    }
+    s.lingerMin = [0, 2, 5, 10].includes(s.lingerMin) ? s.lingerMin : DEFAULT_SETTINGS.lingerMin
     return s
   } catch {
-    return { ...DEFAULT_SETTINGS }
+    return structuredClone(DEFAULT_SETTINGS)
   }
 }
 

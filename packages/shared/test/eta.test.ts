@@ -18,6 +18,8 @@ function track(overrides: Partial<Track> = {}): Track {
     uncertaintyKm: 3,
     placeName: null,
     target: null,
+    origin: null,
+    prediction: null,
     confidence: 0.8,
     sources: [],
     createdAt: NOW,

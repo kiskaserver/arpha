@@ -31,6 +31,7 @@ function setup(script: Script, source: Record<number, RawMessage> = {}) {
 const relevant = (...events: Extraction['events']): Extraction => ({
   relevant: true,
   all_clear: false,
+  closures: [],
   events,
 })
 
@@ -82,6 +83,7 @@ describe('Pipeline', () => {
     const { pipeline, extract, store } = setup(() => ({
       relevant: false,
       all_clear: false,
+      closures: [],
       events: [],
     }))
     await pipeline.submit(message({ id: 5, text: 'Підтримайте канал донатом' }))
@@ -126,7 +128,7 @@ describe('Pipeline', () => {
     const { pipeline, tracker } = setup((i) =>
       i.message.id === 1
         ? relevant(event({ location: 'Оріхів' }))
-        : { relevant: true, all_clear: true, events: [] },
+        : { relevant: true, all_clear: true, closures: [], events: [] },
     )
     await pipeline.submit(message({ id: 1, text: 'шахед Оріхів' }))
     await pipeline.submit(message({ id: 2, text: 'Відбій тривоги' }))
@@ -204,6 +206,7 @@ describe('Pipeline', () => {
     expect(Pipeline.parseStored('{"relevant":true,"all_clear":false,"events":[]}')).toEqual({
       relevant: true,
       all_clear: false,
+      closures: [],
       events: [],
     })
     expect(Pipeline.parseStored('[]')).toBeNull()

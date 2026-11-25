@@ -1,6 +1,7 @@
 <script lang="ts">
+import { THREAT_CLASS_LABELS_UK, THREAT_CLASSES, type ThreatClass } from '@arpha/shared'
 import { uk } from '../lib/i18n'
-import type { Settings, Theme } from '../lib/settings'
+import type { Settings, SoundCategory, SoundId, Theme } from '../lib/settings'
 
 interface Props {
   settings: Settings
@@ -8,9 +9,11 @@ interface Props {
   pushMessage: string | null
   canInstall: boolean
   onchange: (patch: Partial<Settings>) => void
-  ongps: () => void
-  onpick: () => void
+  onaddgps: () => void
+  onaddmap: () => void
   ontogglepush: (on: boolean) => void
+  ontestsound: (category: SoundCategory) => void
+  onlegend: () => void
   oninstall: () => void
   onclose: () => void
 }
@@ -20,9 +23,11 @@ let {
   pushMessage,
   canInstall,
   onchange,
-  ongps,
-  onpick,
+  onaddgps,
+  onaddmap,
   ontogglepush,
+  ontestsound,
+  onlegend,
   oninstall,
   onclose,
 }: Props = $props()
@@ -32,6 +37,29 @@ const themes: { value: Theme; label: string }[] = [
   { value: 'light', label: uk.themeLight },
   { value: 'dark', label: uk.themeDark },
 ]
+const sounds: { value: SoundId; label: string }[] = [
+  { value: 'off', label: uk.soundOff },
+  { value: 'soft', label: uk.soundSoft },
+  { value: 'chime', label: uk.soundChime },
+  { value: 'siren', label: uk.soundSiren },
+]
+const categories: { value: SoundCategory; label: string }[] = [
+  { value: 'alert', label: uk.soundAlert },
+  { value: 'ballistic', label: uk.soundBallistic },
+  { value: 'threat', label: uk.soundThreat },
+]
+
+function toggleClass(c: ThreatClass, on: boolean) {
+  const next = on ? [...settings.classes, c] : settings.classes.filter((x) => x !== c)
+  onchange({ classes: THREAT_CLASSES.filter((x) => next.includes(x)) })
+}
+
+function renamePoint(id: string, name: string) {
+  onchange({
+    points: settings.points.map((p) => (p.id === id ? { ...p, name: name.slice(0, 40) || p.name } : p)),
+  })
+}
+
 let dialog: HTMLDialogElement
 $effect(() => {
   dialog.showModal()
@@ -53,22 +81,36 @@ $effect(() => {
     </header>
 
     <section>
-      <h3>{uk.myPoint}</h3>
-      <p class="hint">{uk.myPointHint}</p>
-      <p class="value" data-testid="point-value">
-        {settings.point
-          ? `${settings.point.lat.toFixed(3)}, ${settings.point.lon.toFixed(3)}`
-          : uk.pointNotSet}
-      </p>
-      <div class="row">
-        <button type="button" onclick={ongps}>{uk.useGps}</button>
-        <button type="button" onclick={onpick}>{uk.pickOnMap}</button>
-        {#if settings.point}
-          <button type="button" class="ghost" onclick={() => onchange({ point: null, pointSource: null })}>
-            {uk.clearPoint}
-          </button>
-        {/if}
-      </div>
+      <h3>{uk.myPoints}</h3>
+      <p class="hint">{uk.myPointsHint}</p>
+      {#if settings.points.length}
+        <ul class="points" data-testid="points">
+          {#each settings.points as p (p.id)}
+            <li>
+              <input
+                aria-label={uk.pointName}
+                value={p.name}
+                maxlength="40"
+                onchange={(e) => renamePoint(p.id, e.currentTarget.value.trim())}
+              />
+              <span class="coords">{p.lat.toFixed(3)}, {p.lon.toFixed(3)}</span>
+              <button
+                type="button"
+                class="ghost"
+                onclick={() => onchange({ points: settings.points.filter((x) => x.id !== p.id) })}
+              >{uk.remove}</button>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="value" data-testid="point-value">{uk.noPoints}</p>
+      {/if}
+      {#if settings.points.length < 5}
+        <div class="row">
+          <button type="button" onclick={onaddgps}>{uk.addByGps}</button>
+          <button type="button" onclick={onaddmap}>{uk.addOnMap}</button>
+        </div>
+      {/if}
     </section>
 
     <section>
@@ -85,18 +127,17 @@ $effect(() => {
     </section>
 
     <section>
-      <h3 id="theme-label">{uk.theme}</h3>
-      <div class="seg" role="radiogroup" aria-labelledby="theme-label">
-        {#each themes as t (t.value)}
-          <button
-            type="button"
-            role="radio"
-            aria-checked={settings.theme === t.value}
-            class:on={settings.theme === t.value}
-            onclick={() => onchange({ theme: t.value })}>{t.label}</button
-          >
-        {/each}
-      </div>
+      <h3>{uk.notifyAbout}</h3>
+      {#each THREAT_CLASSES as c (c)}
+        <label class="check">
+          <input
+            type="checkbox"
+            checked={settings.classes.includes(c)}
+            onchange={(e) => toggleClass(c, e.currentTarget.checked)}
+          />
+          {THREAT_CLASS_LABELS_UK[c]}
+        </label>
+      {/each}
     </section>
 
     <section>
@@ -121,12 +162,81 @@ $effect(() => {
           {uk.pushThreats}
         </label>
         <div class="row">
-          <button type="button" class:primary={!settings.pushEnabled} onclick={() => ontogglepush(!settings.pushEnabled)}>
+          <button
+            type="button"
+            class:primary={!settings.pushEnabled}
+            onclick={() => ontogglepush(!settings.pushEnabled)}
+          >
             {settings.pushEnabled ? uk.pushDisable : uk.pushEnable}
           </button>
         </div>
       {/if}
       {#if pushMessage}<p class="hint" role="status">{pushMessage}</p>{/if}
+    </section>
+
+    <section>
+      <h3>{uk.soundsTitle}</h3>
+      <p class="hint">{uk.soundsHint}</p>
+      {#each categories as cat (cat.value)}
+        <div class="sound">
+          <label for={`sound-${cat.value}`}>{cat.label}</label>
+          <select
+            id={`sound-${cat.value}`}
+            value={settings.sounds[cat.value]}
+            onchange={(e) =>
+              onchange({ sounds: { ...settings.sounds, [cat.value]: e.currentTarget.value as SoundId } })}
+          >
+            {#each sounds as snd (snd.value)}<option value={snd.value}>{snd.label}</option>{/each}
+          </select>
+          <button type="button" class="ghost" onclick={() => ontestsound(cat.value)}>{uk.test}</button>
+        </div>
+      {/each}
+      <label class="check">
+        <input type="checkbox" checked={settings.vibrate} onchange={(e) => onchange({ vibrate: e.currentTarget.checked })} />
+        {uk.vibrate}
+      </label>
+      <label class="check">
+        <input type="checkbox" checked={settings.flash} onchange={(e) => onchange({ flash: e.currentTarget.checked })} />
+        {uk.flash}
+      </label>
+      <label class="check">
+        <input type="checkbox" checked={settings.speak} onchange={(e) => onchange({ speak: e.currentTarget.checked })} />
+        {uk.speak}
+      </label>
+    </section>
+
+    <section>
+      <h3>{uk.display}</h3>
+      <div class="sound">
+        <label for="linger">{uk.linger}</label>
+        <select
+          id="linger"
+          value={String(settings.lingerMin)}
+          onchange={(e) => onchange({ lingerMin: Number(e.currentTarget.value) })}
+        >
+          <option value="0">{uk.lingerNow}</option>
+          {#each [2, 5, 10] as m (m)}<option value={String(m)}>{uk.lingerMin(m)}</option>{/each}
+        </select>
+      </div>
+      <label class="check">
+        <input type="checkbox" checked={settings.hotspots} onchange={(e) => onchange({ hotspots: e.currentTarget.checked })} />
+        {uk.hotspots}
+      </label>
+      <h3 id="theme-label" class="sub">{uk.theme}</h3>
+      <div class="seg" role="radiogroup" aria-labelledby="theme-label">
+        {#each themes as t (t.value)}
+          <button
+            type="button"
+            role="radio"
+            aria-checked={settings.theme === t.value}
+            class:on={settings.theme === t.value}
+            onclick={() => onchange({ theme: t.value })}>{t.label}</button
+          >
+        {/each}
+      </div>
+      <div class="row">
+        <button type="button" onclick={onlegend}>{uk.legend}</button>
+      </div>
     </section>
 
     {#if canInstall}
@@ -149,7 +259,7 @@ $effect(() => {
 <style>
   .sheet {
     width: min(480px, 100%);
-    max-height: min(90dvh, 760px);
+    max-height: min(90dvh, 820px);
     margin: auto auto 0;
     padding: 0;
     border: 0;
@@ -171,7 +281,7 @@ $effect(() => {
     padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 20px;
   }
   header {
     display: flex;
@@ -189,25 +299,29 @@ $effect(() => {
     font-size: 15px;
     font-weight: 600;
   }
+  h3.sub {
+    margin-top: 12px;
+  }
   .hint {
     margin: 4px 0;
     font-size: 13px;
     color: var(--muted);
   }
   .hint a {
-    color: var(--link);
+    color: var(--muted);
+    text-decoration: underline;
   }
   .value {
     margin: 6px 0;
-    font-variant-numeric: tabular-nums;
   }
   .row {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-top: 6px;
+    margin-top: 8px;
   }
-  button {
+  button,
+  select {
     min-height: 40px;
     padding: 8px 14px;
     border: 0;
@@ -225,6 +339,7 @@ $effect(() => {
   button.ghost {
     background: none;
     color: var(--muted);
+    padding: 8px;
   }
   .wide {
     width: 100%;
@@ -235,6 +350,43 @@ $effect(() => {
     min-height: 0;
     padding: 0;
     border-radius: 50%;
+  }
+  .points {
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .points li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 4px 4px 8px;
+    border-radius: 10px;
+    background: var(--chip);
+  }
+  .points input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-weight: 600;
+  }
+  .coords {
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .sound {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
   }
   input[type='range'] {
     width: 100%;
@@ -264,6 +416,7 @@ $effect(() => {
   .check input {
     width: 20px;
     height: 20px;
+    flex: none;
     accent-color: var(--accent);
   }
 </style>

@@ -1,15 +1,26 @@
 import { type LatLon, predictPosition, type Track } from '@arpha/shared'
 
-/** How long a correction takes to blend in. Long enough to look smooth, short enough to stay honest. */
-export const BLEND_MS = 1500
+/**
+ * Time constant of the correction, seconds. A report that moves the estimate by
+ * a few kilometres is flown over in ~3τ instead of appearing as a jump.
+ */
+export const FOLLOW_TAU_S = 2.5
+/** Corrections larger than this (wrong association, very old state) are snapped, not flown. */
+const SNAP_KM = 40
+const SUBSTEP_S = 0.05
+const SETTLED_KM = 0.02
+const KM_PER_DEG = 111.2
 
-interface MotionEntry {
+interface Entry {
   track: Track
-  /** Offset (displayed − predicted) at the moment a new server state arrived. */
-  dLat: number
-  dLon: number
-  dHeading: number
-  since: number
+  /** Display offset from the dead-reckoned position, degrees, and its rate (deg/s). */
+  eLat: number
+  eLon: number
+  vLat: number
+  vLon: number
+  heading: number | null
+  /** Last advance time, ms. */
+  t: number
 }
 
 export interface Pose extends LatLon {
@@ -17,34 +28,55 @@ export interface Pose extends LatLon {
   heading: number | null
 }
 
-const easeOutCubic = (x: number) => 1 - (1 - x) ** 3
 const angleDiff = (a: number, b: number) => ((a - b + 540) % 360) - 180
 
+/** Dead-reckoned position and its velocity (deg/s) at `t`. */
+function reckon(track: Track, t: number) {
+  const p = predictPosition(track, t)
+  const q = predictPosition(track, t + 1000)
+  if (!p || !q) return null
+  return { lat: p.lat, lon: p.lon, vLat: q.lat - p.lat, vLon: q.lon - p.lon }
+}
+
+function offsetKm(e: Entry): number {
+  const cos = Math.cos((e.track.position?.lat ?? 47.8) * (Math.PI / 180))
+  return Math.hypot(e.eLat * KM_PER_DEG, e.eLon * KM_PER_DEG * cos)
+}
+
 /**
- * Turns discrete server states into continuous motion. Between reports the icon
- * dead-reckons along its course; when a report corrects the course, the
- * difference is eased out over BLEND_MS instead of teleporting the icon.
+ * Turns sparse, noisy server states into continuous flight. The icon rides the
+ * dead-reckoned course exactly (no lag); when a report corrects the course, the
+ * difference becomes an offset that a critically damped spring brings back to
+ * zero — no overshoot, no teleport, and the icon's velocity stays continuous.
  */
 export class MotionModel {
-  readonly #entries = new Map<string, MotionEntry>()
+  readonly #entries = new Map<string, Entry>()
 
   upsert(track: Track, now: number): void {
     const prev = this.#entries.get(track.id)
-    const next = predictPosition(track, now)
-    if (!prev || !next) {
-      this.#entries.set(track.id, { track, dLat: 0, dLon: 0, dHeading: 0, since: now })
+    const next = reckon(track, now)
+    if (prev?.track.position && next) {
+      const old = reckon(prev.track, now)
+      if (old) {
+        // Keep the displayed position and velocity continuous across the correction.
+        prev.eLat += old.lat - next.lat
+        prev.eLon += old.lon - next.lon
+        prev.vLat += old.vLat - next.vLat
+        prev.vLon += old.vLon - next.vLon
+      }
+      prev.track = track
+      if (offsetKm(prev) > SNAP_KM) Object.assign(prev, { eLat: 0, eLon: 0, vLat: 0, vLon: 0 })
       return
     }
-    const shown = this.pose(track.id, now)
-    const offset =
-      shown && prev.track.position
-        ? { dLat: shown.lat - next.lat, dLon: shown.lon - next.lon }
-        : { dLat: 0, dLon: 0 }
-    const dHeading =
-      shown?.heading != null && track.headingDeg !== null
-        ? angleDiff(shown.heading, track.headingDeg)
-        : 0
-    this.#entries.set(track.id, { track, ...offset, dHeading, since: now })
+    this.#entries.set(track.id, {
+      track,
+      eLat: 0,
+      eLon: 0,
+      vLat: 0,
+      vLon: 0,
+      heading: track.headingDeg,
+      t: now,
+    })
   }
 
   remove(id: string): void {
@@ -56,23 +88,45 @@ export class MotionModel {
     for (const id of this.#entries.keys()) if (!ids.has(id)) this.#entries.delete(id)
   }
 
-  pose(id: string, now: number): Pose | null {
-    const e = this.#entries.get(id)
-    if (!e) return null
-    const base = predictPosition(e.track, now)
-    if (!base) return null
-    const k = 1 - easeOutCubic(Math.min(1, Math.max(0, (now - e.since) / BLEND_MS)))
-    const heading =
-      e.track.headingDeg === null ? null : (e.track.headingDeg + e.dHeading * k + 360) % 360
-    return { lat: base.lat + e.dLat * k, lon: base.lon + e.dLon * k, heading }
+  /** Integrate every correction up to `now`. Call once per rendered frame. */
+  advance(now: number): void {
+    const ω = 2 / FOLLOW_TAU_S
+    for (const e of this.#entries.values()) {
+      let dt = Math.max(0, (now - e.t) / 1000)
+      e.t = now
+      if (dt > 10) {
+        // Tab was asleep: just show where it is now.
+        Object.assign(e, { eLat: 0, eLon: 0, vLat: 0, vLon: 0, heading: e.track.headingDeg })
+        continue
+      }
+      while (dt > 0) {
+        const h = Math.min(dt, SUBSTEP_S)
+        dt -= h
+        e.vLat += (-ω * ω * e.eLat - 2 * ω * e.vLat) * h
+        e.vLon += (-ω * ω * e.eLon - 2 * ω * e.vLon) * h
+        e.eLat += e.vLat * h
+        e.eLon += e.vLon * h
+        if (e.track.headingDeg !== null) {
+          e.heading ??= e.track.headingDeg
+          const k = 1 - Math.exp(-h / 0.8)
+          e.heading = (e.heading + angleDiff(e.track.headingDeg, e.heading) * k + 360) % 360
+        }
+      }
+      if (e.track.headingDeg === null) e.heading = null
+    }
   }
 
-  /** True while any correction is still blending — the render loop must keep running. */
-  isBlending(now: number): boolean {
-    for (const e of this.#entries.values()) {
-      if (now - e.since < BLEND_MS && (e.dLat !== 0 || e.dLon !== 0 || e.dHeading !== 0))
-        return true
-    }
+  pose(id: string): Pose | null {
+    const e = this.#entries.get(id)
+    if (!e) return null
+    const base = predictPosition(e.track, e.t)
+    if (!base) return null
+    return { lat: base.lat + e.eLat, lon: base.lon + e.eLon, heading: e.heading }
+  }
+
+  /** True while any icon is still absorbing a correction — keep the render loop smooth. */
+  isSettling(): boolean {
+    for (const e of this.#entries.values()) if (offsetKm(e) > SETTLED_KM) return true
     return false
   }
 

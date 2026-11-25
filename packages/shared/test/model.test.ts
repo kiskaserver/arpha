@@ -18,6 +18,8 @@ const base: Track = {
   uncertaintyKm: 2,
   placeName: null,
   target: null,
+  origin: null,
+  prediction: null,
   confidence: 1,
   sources: [],
   createdAt: NOW,
