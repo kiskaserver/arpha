@@ -1,4 +1,4 @@
-import { bearingToCompassUk, THREAT_TYPES } from '@arpha/shared'
+import { bearingToCompassUk, THREAT_TYPES, WEAPON_IDS, WEAPON_SPECS } from '@arpha/shared'
 import { ACTIONS, type ExtractionInput, HEADINGS, PRECISIONS } from './types'
 
 export const TOOL_NAME = 'report_threats'
@@ -49,6 +49,11 @@ export const REPORT_TOOL = {
           required: ['type', 'action', 'confidence'],
           properties: {
             type: { type: 'string', enum: [...THREAT_TYPES] },
+            model: {
+              type: ['string', 'null'],
+              enum: [...WEAPON_IDS, null],
+              description: 'Specific weapon model only when the post names or clearly implies it.',
+            },
             count: {
               type: ['integer', 'null'],
               description: 'Number of objects; upper bound for ranges.',
@@ -81,6 +86,10 @@ export const REPORT_TOOL = {
   },
 }
 
+const WEAPON_LINES = WEAPON_SPECS.map((w) => `- ${w.id}: ${w.aliases.join(', ')}`).join(
+  String.fromCharCode(10),
+)
+
 export const SYSTEM_PROMPT = `You convert Ukrainian/Russian Telegram air-raid monitoring posts about Zaporizhzhia city and oblast into structured threat events.
 
 HOW THESE CHANNELS WRITE
@@ -105,6 +114,9 @@ THREAT TYPES (pick the most specific):
 - explosion: "вибухи", "приліт", "влучання", "влучив у будинок", "чути вибух" at a named place — an impact report (also fresh damage reports: they show where it hit). Use location = the place;
   if the post replies to a tracked object and names no place, emit explosion with no location AND action "lost" for that object.
 - unknown: a real flying threat whose type is not stated and not inferable from the reply chain.
+
+WEAPON MODELS (set model only when named or unambiguous; otherwise null):
+${WEAPON_LINES}
 
 ACTIONS:
 - new: first report of an object/group (not a reply about an existing one).

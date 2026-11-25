@@ -19,6 +19,7 @@ export interface AppDeps {
   infra?: () => InfraStatus[]
   feed?: () => FeedItem[]
   hotspots?: (days: number) => Hotspot[]
+  patterns?: (days: number) => unknown
   bus: EventBus
   logger: Logger
   demo: boolean
@@ -140,6 +141,16 @@ export function createApp(d: AppDeps): Hono {
     }
     c.header('Cache-Control', 'public, max-age=300')
     return c.json(hotspotCache.data)
+  })
+
+  let patternCache: { at: number; days: number; data: unknown } | null = null
+  app.get('/api/patterns', (c) => {
+    const days = Math.min(90, Math.max(1, Number(c.req.query('days')) || 30))
+    if (!patternCache || patternCache.days !== days || now() - patternCache.at > 5 * 60_000) {
+      patternCache = { at: now(), days, data: d.patterns?.(days) ?? null }
+    }
+    c.header('Cache-Control', 'public, max-age=300')
+    return c.json(patternCache.data)
   })
 
   app.get('/api/push/key', (c) =>

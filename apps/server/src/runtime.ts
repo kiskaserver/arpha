@@ -15,6 +15,7 @@ import { createApp } from './http/app'
 import { FeedBuffer, InfraService } from './infra/service'
 import { type MessageSource, Pipeline } from './ingest/pipeline'
 import type { Logger } from './logger'
+import { buildTransitions, summarizePatterns } from './predict/patterns'
 import { Predictor } from './predict/predictor'
 import { type PushSender, PushService } from './push/service'
 
@@ -23,6 +24,8 @@ export interface Ingest extends MessageSource {
   status: string
   start(onMessage: (m: RawMessage) => void): Promise<void>
   stop(): Promise<void>
+  /** Past posts, oldest first (for the one-time history import). */
+  history?(windowMs: number): Promise<RawMessage[]>
 }
 
 export interface RuntimeOverrides {
@@ -64,6 +67,7 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
   const refreshPrior = () => {
     const rows = store.hotspots(now() - 30 * DAY_MS, 2000)
     predictor.setPrior(new Map(rows.map((r) => [r.name, r.count])))
+    predictor.setTransitions(buildTransitions(store.routes(now() - 90 * DAY_MS)))
   }
 
   const boundariesPath =
@@ -83,6 +87,20 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
     })
   }
 
+  const saveRoute = (id: string, state: TrackState) => {
+    // Remember where it flew: routes feed the pattern model and the predictor.
+    if (state.track.type === 'explosion' || !state.path.length) return
+    store.saveRoute({
+      id,
+      type: state.track.type,
+      model: state.track.model,
+      startedAt: state.path[0]!.at,
+      endedAt: state.track.updatedAt,
+      outcome: state.track.status === 'active' ? 'expired' : state.track.status,
+      path: state.path,
+    })
+  }
+
   const tracker = new Tracker(
     {
       predict: (track, at) => predictor.predict(track, Math.max(at, now())),
@@ -91,8 +109,9 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
         bus.publish({ type: 'track', track })
         void push?.onTrack(track)
       },
-      onRemove: (id) => {
+      onRemove: (id, state) => {
         store.deleteTrack(id)
+        saveRoute(id, state)
         bus.publish({ type: 'track_removed', id })
       },
     },
@@ -177,6 +196,7 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
     infra: () => infra.list(),
     feed: () => feed.list(),
     hotspots: (days) => store.hotspots(now() - days * DAY_MS, 150),
+    patterns: (days) => summarizePatterns(store.routes(now() - days * DAY_MS), days),
     bus,
     logger,
     demo: config.DEMO_MODE,
@@ -199,6 +219,53 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
 
   const timers: NodeJS.Timeout[] = []
 
+  /**
+   * Replays past posts through an isolated tracker (no push, no live map) so the
+   * pattern model starts with history instead of from zero. Runs once per volume.
+   */
+  async function importHistory(hours: number): Promise<number> {
+    if (!ingest?.history || !extractor || !hours || store.getJson('historyImported')) return 0
+    const messages = await ingest.history(hours * 3_600_000)
+    let clock = messages[0]?.date ?? now()
+    const replay = new Tracker({ onRemove: saveRoute })
+    const importer = new Pipeline({
+      store,
+      extractor,
+      gazetteer,
+      tracker: replay,
+      source: ingest,
+      logger,
+      concurrency: 1,
+      now: () => clock,
+      maxAgeMs: Number.POSITIVE_INFINITY,
+      onProcessed: ({ message, resolved }) => {
+        for (const ev of resolved) {
+          const place = ev.locationPlace
+          if (place) {
+            store.addObservation({
+              at: message.date,
+              place: place.name,
+              lat: place.lat,
+              lon: place.lon,
+              type: ev.type,
+            })
+          }
+        }
+      },
+    })
+    for (const m of messages) {
+      clock = m.date + 20_000
+      replay.tick(clock)
+      await importer.submit(m).catch(() => {})
+    }
+    replay.tick(clock + 24 * 3_600_000) // flush: every track ends and leaves its route
+    replay.tick(clock + 48 * 3_600_000)
+    store.setJson('historyImported', { at: now(), hours, messages: messages.length })
+    refreshPrior()
+    logger.info({ messages: messages.length, hours }, 'history imported')
+    return messages.length
+  }
+
   return {
     app,
     store,
@@ -211,6 +278,7 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
     infra,
     feed,
     predictor,
+    importHistory,
     async start() {
       refreshPrior()
       timers.push(setInterval(refreshPrior, 10 * 60_000))
@@ -231,6 +299,9 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
             /* logged by the pipeline */
           })
         })
+        void importHistory(config.HISTORY_IMPORT_HOURS).catch((err) =>
+          logger.warn({ err }, 'history import failed'),
+        )
       }
     },
     async stop() {

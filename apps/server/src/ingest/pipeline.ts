@@ -34,6 +34,8 @@ export interface PipelineDeps {
   logger: Logger
   concurrency: number
   now?: () => number
+  /** Ignore reports older than this; Infinity for history import. */
+  maxAgeMs?: number
 }
 
 const MAX_REPLY_DEPTH = 3
@@ -115,7 +117,8 @@ export class Pipeline {
         trackIds,
       })
 
-    if (text.length < 3 || !HAS_CYRILLIC.test(text) || now - msg.date > MAX_AGE_MS) {
+    const maxAge = this.#d.maxAgeMs ?? MAX_AGE_MS
+    if (text.length < 3 || !HAS_CYRILLIC.test(text) || now - msg.date > maxAge) {
       save(null, [])
       this.#stats.skipped++
       return

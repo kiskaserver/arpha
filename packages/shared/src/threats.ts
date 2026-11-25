@@ -1,7 +1,7 @@
 /**
  * Threat taxonomy and per-type kinematic defaults.
  *
- * Speeds are typical cruise values used to seed the motion model before we have
+ * Speeds are typical cruise values (see specs.ts for per-model figures and sources) used to seed the motion model before we have
  * two observations; `maxSpeedKmh` clamps filter output so noisy reports can't
  * produce physically absurd velocities. The prediction fields drive the
  * reach cone and the impact zone drawn around a threat.
@@ -61,8 +61,8 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
     impactRadiusKm: 0.3,
   }),
   jet_drone: p({
-    speedKmh: 450,
-    maxSpeedKmh: 700,
+    speedKmh: 370,
+    maxSpeedKmh: 600,
     ttlMin: 12,
     maxExtrapolationMin: 5,
     processNoise: 2,
@@ -72,8 +72,8 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
     impactRadiusKm: 0.3,
   }),
   molniya: p({
-    speedKmh: 110,
-    maxSpeedKmh: 160,
+    speedKmh: 120,
+    maxSpeedKmh: 300,
     ttlMin: 12,
     maxExtrapolationMin: 5,
     processNoise: 1.5,
@@ -83,8 +83,8 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
     impactRadiusKm: 0.1,
   }),
   fpv: p({
-    speedKmh: 90,
-    maxSpeedKmh: 150,
+    speedKmh: 110,
+    maxSpeedKmh: 180,
     ttlMin: 8,
     maxExtrapolationMin: 3,
     processNoise: 3,
@@ -94,8 +94,8 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
     impactRadiusKm: 0.05,
   }),
   cruise_missile: p({
-    speedKmh: 800,
-    maxSpeedKmh: 1000,
+    speedKmh: 850,
+    maxSpeedKmh: 1080,
     ttlMin: 10,
     maxExtrapolationMin: 4,
     processNoise: 4,
@@ -127,8 +127,8 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
     impactRadiusKm: 3,
   }),
   recon_drone: p({
-    speedKmh: 120,
-    maxSpeedKmh: 200,
+    speedKmh: 110,
+    maxSpeedKmh: 150,
     ttlMin: 30,
     maxExtrapolationMin: 8,
     processNoise: 1,

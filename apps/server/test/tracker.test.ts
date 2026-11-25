@@ -96,7 +96,7 @@ describe('Tracker', () => {
     expect(tracker.get(a!)).toBeDefined()
     tracker.tick(min(4))
     expect(tracker.get(a!)).toBeUndefined()
-    expect(onRemove).toHaveBeenCalledWith(a)
+    expect(onRemove).toHaveBeenCalledWith(a, expect.objectContaining({ path: expect.any(Array) }))
   })
 
   it('"впали каби" marks an impact where they fell', () => {
@@ -118,6 +118,31 @@ describe('Tracker', () => {
     const [s] = tracker.apply([resolved({ location: 'Оріхів' })], ctx(3))
     tracker.apply([resolved({ action: 'lost' })], ctx(4, { parentTrackIds: [s!] }))
     expect(tracker.active().filter((t) => t.type === 'explosion')).toHaveLength(2)
+  })
+
+  it('a named model seeds its published speed (Герань-3 ≈ 370 km/h)', () => {
+    const { tracker } = setup()
+    const [a] = tracker.apply(
+      [resolved({ type: 'jet_drone', model: 'geran_3', location: 'Оріхів', heading: 'N' })],
+      ctx(0),
+    )
+    const t = tracker.get(a!)!
+    expect(t.model).toBe('geran_3')
+    expect(t.speedKmh).toBeGreaterThan(300)
+    expect(t.speedKmh).toBeLessThan(450)
+  })
+
+  it('records the route and hands it over when the track ends', () => {
+    const onRemove = vi.fn()
+    const tracker = new Tracker({ onRemove })
+    const [a] = tracker.apply([resolved({ location: 'Василівка' })], ctx(0))
+    tracker.apply([resolved({ location: 'Василівка', action: 'update' })], ctx(1))
+    tracker.apply([resolved({ location: 'Балабине', action: 'update' })], ctx(10))
+    tracker.apply([resolved({ action: 'destroyed' })], ctx(11, { parentTrackIds: [a!] }))
+    tracker.tick(min(20))
+    const [id, state] = onRemove.mock.calls[0]!
+    expect(id).toBe(a)
+    expect(state.path.map((p: { place: string }) => p.place)).toEqual(['Василівка', 'Балабине'])
   })
 
   it('partial destruction decrements the count', () => {
@@ -235,10 +260,15 @@ describe('Tracker', () => {
     })
   })
 
-  it('restores from a snapshot', () => {
+  it('restores from a snapshot (including ones saved before routes existed)', () => {
     const { tracker } = setup()
     tracker.apply([resolved({ location: 'Оріхів' })], ctx(0))
-    const restored = new Tracker({}, tracker.snapshot())
+    const old = tracker.snapshot().map((s) => {
+      const { path: _p, ...rest } = s
+      return { ...rest, track: { ...s.track, model: undefined as unknown as null } } as typeof s
+    })
+    const restored = new Tracker({}, old)
+    expect(restored.snapshot()[0]!.path).toEqual([])
     expect(restored.active()).toHaveLength(1)
   })
 

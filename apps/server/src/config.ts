@@ -38,6 +38,13 @@ const envSchema = z.object({
         .filter(Boolean),
     ),
   TG_BACKFILL_MIN: z.coerce.number().int().min(0).max(180).default(30),
+  /** One-time import of this many hours of channel history to learn routes (costs LLM tokens). */
+  HISTORY_IMPORT_HOURS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(24 * 30)
+    .default(0),
 
   ANTHROPIC_API_KEY: optionalString,
   ANTHROPIC_MODEL: z.string().default('claude-haiku-4-5'),

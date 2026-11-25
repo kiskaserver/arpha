@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { alertCovers, cityUnderAlert, OBLAST_FEATURE_ID, ZP_CITY_FEATURE_ID } from '../src/alerts'
 import { haversineKm, ZAPORIZHZHIA } from '../src/geo'
 import { bearingToCompassUk, THREAT_LABELS_UK, threatLabelUk } from '../src/labels'
 import { isExtrapolating, predictPosition, type Track } from '../src/model'
@@ -20,6 +21,7 @@ const base: Track = {
   target: null,
   origin: null,
   prediction: null,
+  model: null,
   confidence: 1,
   sources: [],
   createdAt: NOW,
@@ -116,5 +118,27 @@ describe('pushSubscriptionSchema', () => {
     expect(() =>
       pushSubscriptionSchema.parse({ subscription: { endpoint: 'nope' }, point: null }),
     ).toThrow()
+  })
+})
+
+describe('alertCovers (city is announced separately)', () => {
+  const a = (
+    featureIds: string[],
+    locationType: 'oblast' | 'raion' | 'city' | 'hromada' = 'raion',
+  ) => ({
+    featureIds,
+    locationType,
+  })
+  const CITY_AREA = [ZP_CITY_FEATURE_ID, 'r11857100', OBLAST_FEATURE_ID]
+  it('a raion alert does not put the city under alert', () => {
+    expect(alertCovers(a(['r11857100']), CITY_AREA)).toBe(false)
+    expect(alertCovers(a([ZP_CITY_FEATURE_ID], 'city'), CITY_AREA)).toBe(true)
+    expect(alertCovers(a([OBLAST_FEATURE_ID], 'oblast'), CITY_AREA)).toBe(true)
+    expect(cityUnderAlert([a(['r11857100'])])).toBe(false)
+    expect(cityUnderAlert([a([ZP_CITY_FEATURE_ID], 'city')])).toBe(true)
+  })
+  it('outside the city, any overlapping polygon counts', () => {
+    expect(alertCovers(a(['r11857100']), ['r123', 'r11857100'])).toBe(true)
+    expect(alertCovers(a(['r9']), ['r123'])).toBe(false)
   })
 })

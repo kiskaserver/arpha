@@ -1,7 +1,9 @@
 import {
   type ActiveAlert,
   ALERT_TYPE_LABELS_UK,
+  alertCovers,
   computeApproach,
+  flightMinutes,
   formatMinutesUk,
   haversineKm,
   type LatLon,
@@ -11,6 +13,7 @@ import {
   type ThreatClass,
   type Track,
   threatLabelUk,
+  weaponSpec,
 } from '@arpha/shared'
 import type { PushSubscriptionInput } from '@arpha/shared/schemas'
 import type { Boundaries } from '../alerts/boundaries'
@@ -152,7 +155,7 @@ export class PushService {
    */
   #affected(sub: StoredSubscription, a: ActiveAlert): string[] | null {
     if (!sub.points.length) return a.locationType === 'oblast' ? [] : null
-    const hit = sub.points.filter((p) => a.featureIds.some((id) => p.featureIds.includes(id)))
+    const hit = sub.points.filter((p) => alertCovers(a, p.featureIds))
     return hit.length ? hit.map((p) => p.name) : null
   }
 
@@ -229,7 +232,12 @@ export class PushService {
       if (!target) return null
       const near = sub.points.filter((p) => haversineKm(p, target) <= BALLISTIC_RADIUS_KM)
       if (!near.length) return null
-      const from = track.origin ? ` Напрямок: з боку ${track.origin.name}.` : ''
+      const spec = weaponSpec(track.model, 'ballistic')
+      const eta =
+        spec && track.origin && track.target
+          ? ` Підліт ~${formatMinutesUk(flightMinutes(spec, haversineKm(track.origin, track.target)))}.`
+          : ''
+      const from = track.origin ? ` Напрямок: з боку ${track.origin.name}.${eta}` : ''
       return {
         title: `🚀 Загроза балістики · ${near.map((p) => p.name).join(', ')}`,
         body: `${track.target?.name ?? track.placeName ?? 'Ваш район'}.${from} Негайно в укриття!`,

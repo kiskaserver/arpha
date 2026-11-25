@@ -18,7 +18,7 @@ test.describe('Арфа', () => {
     await expect(page).toHaveTitle(/Арфа/)
     await expect(page.locator('html')).toHaveAttribute('lang', 'uk')
     await expect(page.getByText('Демо')).toBeVisible()
-    await expect(page.getByTestId('alert-chip')).toContainText('Повітряна тривога')
+    await expect(page.getByTestId('alert-chip')).toContainText('Тривога в області')
     await expect(page.getByTestId('threat-count')).toContainText(/загроз/)
     await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible()
     await expect(page.getByText('Завантаження карти…')).toBeHidden({ timeout: 30_000 })
@@ -27,11 +27,7 @@ test.describe('Арфа', () => {
 
   test('selecting a threat opens its card with kinematics and ETA', async ({ page, isMobile }) => {
     await page.goto('/')
-    if (isMobile)
-      await page
-        .getByRole('button', { name: /загроз/ })
-        .first()
-        .click()
+    if (isMobile) await page.getByRole('tab', { name: 'Загрози' }).click()
     const row = page.getByTestId('threat-row').filter({ hasText: 'Шахед' }).first()
     await expect(row).toBeVisible({ timeout: 20_000 })
     await row.click()
@@ -111,26 +107,74 @@ test.describe('Арфа', () => {
 
   test('feed tab shows channel posts with source chips', async ({ page, isMobile }) => {
     await page.goto('/')
-    if (isMobile)
-      await page
-        .getByRole('button', { name: /загроз/ })
-        .first()
-        .click()
+    if (isMobile) await page.getByRole('tab', { name: 'Загрози' }).click()
     await page.getByTestId('tab-feed').click()
     await expect(page.getByTestId('feed')).toBeVisible()
   })
 
   test('forecast: the selected drone shows likely targets', async ({ page, isMobile }) => {
     await page.goto('/')
-    if (isMobile)
-      await page
-        .getByRole('button', { name: /загроз/ })
-        .first()
-        .click()
+    if (isMobile) await page.getByRole('tab', { name: 'Загрози' }).click()
     const row = page.getByTestId('threat-row').filter({ hasText: 'Шахеди' }).first()
     await expect(row).toBeVisible({ timeout: 20_000 })
     await row.click()
     await expect(page.getByTestId('likely-targets')).toContainText('%')
+  })
+
+  test('mobile sheet can be dragged open and closed', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'bottom sheet is a mobile layout')
+    await page.goto('/')
+    const panel = page.getByTestId('threat-panel')
+    const closed = (await panel.boundingBox())!.height
+    // A finger swipe on the handle: touch pointer events, as phones send them.
+    const swipe = (dy: number) =>
+      page.getByTestId('sheet-handle').evaluate(async (el, dy) => {
+        const r = el.getBoundingClientRect()
+        const x = r.left + r.width / 2
+        let y = r.top + 10
+        const fire = (type: string) =>
+          el.dispatchEvent(
+            new PointerEvent(type, {
+              bubbles: true,
+              pointerId: 7,
+              pointerType: 'touch',
+              clientX: x,
+              clientY: y,
+              button: 0,
+              isPrimary: true,
+            }),
+          )
+        fire('pointerdown')
+        for (let i = 0; i < 12; i++) {
+          y += dy / 12
+          fire('pointermove')
+          await new Promise((res) => setTimeout(res, 16))
+        }
+        fire('pointerup')
+      }, dy)
+    await swipe(-450)
+    await expect.poll(async () => (await panel.boundingBox())!.height).toBeGreaterThan(closed + 200)
+    await swipe(700)
+    await expect.poll(async () => (await panel.boundingBox())!.height).toBeLessThan(closed + 10)
+  })
+
+  test('analytics tab explains learned routes', async ({ page, isMobile }) => {
+    await page.goto('/')
+    if (isMobile) await page.getByRole('tab', { name: 'Загрози' }).click()
+    await page.getByTestId('tab-analytics').click()
+    await expect(page.getByTestId('analytics')).toBeVisible()
+  })
+
+  test('selected threat shows weapon characteristics with sources', async ({ page, isMobile }) => {
+    await page.goto('/')
+    if (isMobile) await page.getByRole('tab', { name: 'Загрози' }).click()
+    const row = page.getByTestId('threat-row').filter({ hasText: 'Шахеди' }).first()
+    await expect(row).toBeVisible({ timeout: 20_000 })
+    await row.click()
+    const specs = page.getByTestId('specs')
+    await expect(specs).toContainText('Шахед-136')
+    await expect(specs).toContainText('км/год')
+    await expect(specs.getByRole('link').first()).toHaveAttribute('href', /^https:/)
   })
 
   test('layout fits the viewport without horizontal scroll', async ({ page }) => {

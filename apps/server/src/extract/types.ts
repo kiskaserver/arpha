@@ -1,4 +1,4 @@
-import { THREAT_TYPES, type ThreatType } from '@arpha/shared'
+import { THREAT_TYPES, type ThreatType, WEAPON_IDS } from '@arpha/shared'
 import { z } from 'zod'
 
 /** A channel post, normalized away from the Telegram client library. */
@@ -32,6 +32,11 @@ const nullableString = z
  */
 export const extractedEventSchema = z.object({
   type: z.enum(THREAT_TYPES).catch('unknown'),
+  model: z
+    .enum(WEAPON_IDS as [string, ...string[]])
+    .nullish()
+    .catch(null)
+    .transform((v) => v ?? null),
   count: z.coerce
     .number()
     .int()

@@ -107,6 +107,19 @@ export class TelegramIngest implements MessageSource {
     }
   }
 
+  /** Every post of the last `windowMs`, oldest first, across channels. */
+  async history(windowMs: number, limitPerChannel = 3000): Promise<RawMessage[]> {
+    const since = Date.now() - windowMs
+    const all: RawMessage[] = []
+    for (const { entity, info } of this.#channels.values()) {
+      for await (const m of this.#client.iterMessages(entity, { limit: limitPerChannel })) {
+        if (m.date * 1000 < since) break
+        all.push(toRawMessage(m as unknown as GramMessageLike, info))
+      }
+    }
+    return all.sort((a, b) => a.date - b.date)
+  }
+
   async getMessage(channel: string, id: number): Promise<RawMessage | null> {
     const c = this.#channels.get(channel)
     if (!c) return null

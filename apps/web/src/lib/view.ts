@@ -1,6 +1,7 @@
 import {
   type AlertsState,
   type Approach,
+  alertCovers,
   computeApproach,
   type LatLon,
   type Track,
@@ -48,7 +49,7 @@ export type AlertLevel = 'mine' | 'region' | 'none' | 'unknown'
 export function alertLevel(alerts: AlertsState, myFeatureIds: string[]): AlertLevel {
   if (alerts.stale && !alerts.alerts.length) return 'unknown'
   if (!alerts.alerts.length) return 'none'
-  const mine = alerts.alerts.some((a) => a.featureIds.some((id) => myFeatureIds.includes(id)))
+  const mine = myFeatureIds.length > 0 && alerts.alerts.some((a) => alertCovers(a, myFeatureIds))
   return mine ? 'mine' : 'region'
 }
 

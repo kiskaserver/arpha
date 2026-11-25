@@ -18,6 +18,17 @@ export interface StoredMessage {
   trackIds: string[]
 }
 
+export interface RouteRecord {
+  id: string
+  type: string
+  model: string | null
+  startedAt: number
+  endedAt: number
+  /** destroyed / lost / expired. */
+  outcome: string
+  path: { lat: number; lon: number; at: number; place: string }[]
+}
+
 export class Store {
   readonly db: DatabaseSync
 
@@ -52,6 +63,16 @@ export class Store {
         type TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS observations_at ON observations(at);
+      CREATE TABLE IF NOT EXISTS routes (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        model TEXT,
+        started_at INTEGER NOT NULL,
+        ended_at INTEGER NOT NULL,
+        outcome TEXT NOT NULL,
+        path TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS routes_started ON routes(started_at);
       CREATE TABLE IF NOT EXISTS kv (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -171,6 +192,30 @@ export class Store {
 
   pruneObservations(olderThan: number): void {
     this.db.prepare('DELETE FROM observations WHERE at < ?').run(olderThan)
+  }
+
+  saveRoute(r: RouteRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO routes (id, type, model, started_at, ended_at, outcome, path) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET ended_at = excluded.ended_at, outcome = excluded.outcome, path = excluded.path`,
+      )
+      .run(r.id, r.type, r.model, r.startedAt, r.endedAt, r.outcome, JSON.stringify(r.path))
+  }
+
+  routes(since: number): RouteRecord[] {
+    const rows = this.db
+      .prepare('SELECT * FROM routes WHERE started_at >= ? ORDER BY started_at')
+      .all(since) as Record<string, unknown>[]
+    return rows.map((r) => ({
+      id: r.id as string,
+      type: r.type as string,
+      model: (r.model as string | null) ?? null,
+      startedAt: r.started_at as number,
+      endedAt: r.ended_at as number,
+      outcome: r.outcome as string,
+      path: JSON.parse(r.path as string) as RouteRecord['path'],
+    }))
   }
 
   getJson<T>(key: string): T | null {
