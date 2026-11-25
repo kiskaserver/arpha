@@ -233,6 +233,18 @@ export class Store {
       .run(key, JSON.stringify(value))
   }
 
+  /** Run `fn` in one transaction: all of it is written, or none. */
+  batch(fn: () => void): void {
+    this.db.exec('BEGIN')
+    try {
+      fn()
+      this.db.exec('COMMIT')
+    } catch (err) {
+      this.db.exec('ROLLBACK')
+      throw err
+    }
+  }
+
   close(): void {
     this.db.close()
   }

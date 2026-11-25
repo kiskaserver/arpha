@@ -233,13 +233,91 @@ describe('runtime', () => {
       now: () => min(0),
     })
     runtimes.push(rt)
-    expect(await rt.importHistory(6)).toBe(2)
+    expect(await rt.importHistory({ hours: 6 })).toBe(2)
     expect(rt.store.routes(0)[0]!.path.map((p) => p.place)).toEqual(['Василівка', 'Балабине'])
+    expect(
+      rt.store
+        .hotspots(0)
+        .map((h) => h.name)
+        .sort(),
+    ).toEqual(['Балабине', 'Василівка'])
     expect(rt.tracker.active()).toHaveLength(0)
     const patterns = await json(rt.app.request('/api/patterns?days=7'))
     expect(patterns.corridors[0]).toMatchObject({ from: 'Василівка', to: 'Балабине' })
     // Runs only once per volume.
-    expect(await rt.importHistory(6)).toBe(0)
+    expect(await rt.importHistory({ hours: 6 })).toBe(0)
+    expect(rt.store.getJson('historyImported')).toMatchObject({ hours: 6, messages: 2, routes: 1 })
+  })
+
+  it('imports the last N posts per channel, skipping posts already handled live', async () => {
+    const ingest = new FakeIngest()
+    const calls: [number, number | undefined][] = []
+    ;(ingest as Ingest).history = async (windowMs, limit) => {
+      calls.push([windowMs, limit])
+      return [
+        message({ id: 1, text: 'шахед Василівка', date: min(-30 * 24 * 60) }),
+        message({ id: 2, text: 'шахед Балабине', date: min(-10) }),
+      ]
+    }
+    const extract = vi.fn(async () => ({
+      relevant: true,
+      all_clear: false,
+      closures: [],
+      events: [event({ location: 'Василівка' })],
+    }))
+    const rt = buildRuntime(cfg(), silentLogger, {
+      ingest,
+      extractor: { extract },
+      now: () => min(0),
+    })
+    runtimes.push(rt)
+    rt.store.saveMessage({
+      channel: 'test_channel',
+      id: 2,
+      date: min(-10),
+      editDate: null,
+      text: 'шахед Балабине',
+      replyToId: null,
+      extraction: '{"relevant":false}',
+      trackIds: [],
+    })
+    expect(await rt.importHistory({ posts: 1000 })).toBe(1)
+    expect(calls).toEqual([[Number.POSITIVE_INFINITY, 1000]])
+    expect(extract).toHaveBeenCalledTimes(1)
+    expect(rt.store.getJson('historyImported')).toMatchObject({ posts: 1000, messages: 1 })
+  })
+
+  it('a failed import writes nothing and can run again', async () => {
+    const ingest = new FakeIngest()
+    let fail = true
+    ;(ingest as Ingest).history = async () => {
+      if (fail) throw new Error('FLOOD_WAIT')
+      return [message({ id: 1, text: 'шахед Василівка', date: min(-60) })]
+    }
+    const extractor: Extractor = {
+      extract: async () => ({
+        relevant: true,
+        all_clear: false,
+        closures: [],
+        events: [event({ location: 'Василівка' })],
+      }),
+    }
+    const rt = buildRuntime(cfg(), silentLogger, { ingest, extractor, now: () => min(0) })
+    runtimes.push(rt)
+    await expect(rt.importHistory({ posts: 10 })).rejects.toThrow('FLOOD_WAIT')
+    expect(rt.store.getJson('historyImported')).toBeNull()
+    fail = false
+    expect(await rt.importHistory({ posts: 10 })).toBe(1)
+    expect(rt.store.routes(0)).toHaveLength(1)
+  })
+
+  it('does nothing when neither hours nor posts are configured', async () => {
+    const ingest = new FakeIngest()
+    ;(ingest as Ingest).history = vi.fn(async () => [])
+    const rt = buildRuntime(cfg(), silentLogger, { ingest, extractor: { extract: vi.fn() } })
+    runtimes.push(rt)
+    expect(await rt.importHistory({})).toBe(0)
+    expect((ingest as Ingest).history).not.toHaveBeenCalled()
   })
 
   it('without an extractor key, ingestion is not wired', () => {

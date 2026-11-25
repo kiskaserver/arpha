@@ -68,4 +68,18 @@ describe('logger', () => {
     expect(createLogger('info').level).toBe('info')
     expect(createLogger('debug', true).level).toBe('debug')
   })
+
+  it('batch writes everything or nothing', () => {
+    const store = new Store(':memory:')
+    const obs = { at: 1, place: 'Оріхів', lat: 47.5, lon: 35.8, type: 'shahed' }
+    expect(() =>
+      store.batch(() => {
+        store.addObservation(obs)
+        throw new Error('boom')
+      }),
+    ).toThrow('boom')
+    expect(store.hotspots(0)).toEqual([])
+    store.batch(() => store.addObservation(obs))
+    expect(store.hotspots(0)).toHaveLength(1)
+  })
 })

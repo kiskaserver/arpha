@@ -25,7 +25,7 @@ export interface Ingest extends MessageSource {
   start(onMessage: (m: RawMessage) => void): Promise<void>
   stop(): Promise<void>
   /** Past posts, oldest first (for the one-time history import). */
-  history?(windowMs: number): Promise<RawMessage[]>
+  history?(windowMs: number, limitPerChannel?: number): Promise<RawMessage[]>
 }
 
 export interface RuntimeOverrides {
@@ -223,14 +223,30 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
   /**
    * Replays past posts through an isolated tracker (no push, no live map) so the
    * pattern model starts with history instead of from zero. Runs once per volume.
+   *
+   * Extractions are cached in their own database (never pruned), so a restart in
+   * the middle resumes without paying for the model twice, and routes are written
+   * in one transaction at the end, so an interrupted run leaves nothing half-done.
    */
-  async function importHistory(hours: number): Promise<number> {
-    if (!ingest?.history || !extractor || !hours || store.getJson('historyImported')) return 0
-    const messages = await ingest.history(hours * 3_600_000)
+  async function importHistory(opts: { hours?: number; posts?: number }): Promise<number> {
+    const hours = opts.hours ?? 0
+    const posts = opts.posts ?? 0
+    if (!ingest?.history || !extractor || !(hours || posts) || store.getJson('historyImported')) {
+      return 0
+    }
+    const windowMs = hours ? hours * 3_600_000 : Number.POSITIVE_INFINITY
+    const fetched = await ingest.history(windowMs, posts || undefined)
+    // Posts the live pipeline already handled are in the live store and its tracks.
+    const messages = fetched.filter((m) => !store.getMessage(m.channel, m.id)?.extraction)
+    const cache = new Store(
+      config.NODE_ENV === 'test' ? ':memory:' : join(config.DATA_DIR, 'history.sqlite'),
+    )
+    const routes: [string, TrackState][] = []
+    const observations: Parameters<Store['addObservation']>[0][] = []
     let clock = messages[0]?.date ?? now()
-    const replay = new Tracker({ onRemove: saveRoute })
+    const replay = new Tracker({ onRemove: (id, state) => routes.push([id, state]) })
     const importer = new Pipeline({
-      store,
+      store: cache,
       extractor,
       gazetteer,
       tracker: replay,
@@ -239,11 +255,12 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
       concurrency: 1,
       now: () => clock,
       maxAgeMs: Number.POSITIVE_INFINITY,
+      reuseStored: true,
       onProcessed: ({ message, resolved }) => {
         for (const ev of resolved) {
           const place = ev.locationPlace
           if (place) {
-            store.addObservation({
+            observations.push({
               at: message.date,
               place: place.name,
               lat: place.lat,
@@ -254,16 +271,41 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
         }
       },
     })
-    for (const m of messages) {
-      clock = m.date + 20_000
-      replay.tick(clock)
-      await importer.submit(m).catch(() => {})
+    logger.info(
+      { messages: messages.length, hours, posts, from: messages[0]?.date },
+      'history import started',
+    )
+    try {
+      let done = 0
+      for (const m of messages) {
+        clock = m.date + 20_000
+        replay.tick(clock)
+        await importer.submit(m).catch(() => {})
+        if (++done % 250 === 0) {
+          logger.info({ done, of: messages.length, ...importer.stats }, 'history import progress')
+        }
+      }
+      replay.tick(clock + 24 * 3_600_000) // flush: every track ends and leaves its route
+      replay.tick(clock + 48 * 3_600_000)
+      store.batch(() => {
+        for (const o of observations) store.addObservation(o)
+        for (const [id, state] of routes) saveRoute(id, state)
+        store.setJson('historyImported', {
+          at: now(),
+          hours,
+          posts,
+          messages: messages.length,
+          routes: routes.length,
+        })
+      })
+    } finally {
+      cache.close()
     }
-    replay.tick(clock + 24 * 3_600_000) // flush: every track ends and leaves its route
-    replay.tick(clock + 48 * 3_600_000)
-    store.setJson('historyImported', { at: now(), hours, messages: messages.length })
     refreshPrior()
-    logger.info({ messages: messages.length, hours }, 'history imported')
+    logger.info(
+      { messages: messages.length, routes: routes.length, ...importer.stats },
+      'history imported',
+    )
     return messages.length
   }
 
@@ -300,9 +342,10 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
             /* logged by the pipeline */
           })
         })
-        void importHistory(config.HISTORY_IMPORT_HOURS).catch((err) =>
-          logger.warn({ err }, 'history import failed'),
-        )
+        void importHistory({
+          hours: config.HISTORY_IMPORT_HOURS,
+          posts: config.HISTORY_IMPORT_POSTS,
+        }).catch((err) => logger.warn({ err }, 'history import failed'))
       }
     },
     async stop() {

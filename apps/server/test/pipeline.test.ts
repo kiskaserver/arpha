@@ -65,8 +65,76 @@ describe('Pipeline', () => {
     )
     const m = message({ id: 1, text: 'шахед' })
     await pipeline.submit(m)
-    await pipeline.submit({ ...m, editDate: min(0.5) })
+    await pipeline.submit({ ...m, editDate: min(0.5), text: 'шахед, уточнення' })
     expect(tracker.active()).toHaveLength(1)
+  })
+
+  it('an edit that keeps the text (reactions, buttons) does not call the model again', async () => {
+    const { pipeline, extract } = setup(() => relevant(event({ location: 'Оріхів' })))
+    const m = message({ id: 1, text: 'шахед Оріхів' })
+    await pipeline.submit(m)
+    await pipeline.submit({ ...m, editDate: min(0.2) })
+    await pipeline.submit({ ...m, editDate: min(0.3) })
+    expect(extract).toHaveBeenCalledTimes(1)
+    expect(pipeline.stats.skipped).toBe(2)
+  })
+
+  it('a burst of versions of one post (new, edited, sweep) costs one model call', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const seen: string[] = []
+    const { pipeline, extract } = setup(async (i) => {
+      seen.push(i.message.text)
+      await gate
+      return relevant(event({ location: 'Оріхів' }))
+    })
+    // Another post of the channel is in flight, so the versions queue up behind it.
+    const busy = pipeline.submit(message({ id: 9, text: 'шахед Комишуваха' }))
+    const original = message({ id: 1, text: 'шахед Оріхв' })
+    const edited = { ...original, editDate: min(0.1), text: 'шахед Оріхів' }
+    const all = Promise.all([
+      pipeline.submit(original),
+      pipeline.submit(edited),
+      pipeline.submit({ ...edited }),
+    ])
+    release()
+    await Promise.all([busy, all])
+    expect(extract).toHaveBeenCalledTimes(2)
+    expect(seen).toEqual(['шахед Комишуваха', 'шахед Оріхів'])
+    expect(pipeline.stats.skipped).toBe(2)
+  })
+
+  it('a replay reuses stored extractions instead of calling the model again', async () => {
+    const store = new Store(':memory:')
+    const extract = vi.fn(async () => relevant(event({ location: 'Оріхів' })))
+    const make = (tracker: Tracker) =>
+      new Pipeline({
+        store,
+        extractor: { extract },
+        gazetteer: gazetteer(),
+        tracker,
+        source: { getMessage: async () => null },
+        logger: silentLogger,
+        concurrency: 1,
+        now: () => min(1),
+        reuseStored: true,
+      })
+    const m = message({ id: 1, text: 'шахед Оріхів' })
+    const noise = message({ id: 2, text: '👍' })
+    await make(new Tracker()).submit(m)
+    await make(new Tracker()).submit(noise)
+    // A restarted import: a fresh tracker, the same cache.
+    const tracker = new Tracker()
+    const second = make(tracker)
+    await second.submit(m)
+    await second.submit(noise)
+    expect(extract).toHaveBeenCalledTimes(1)
+    expect(tracker.active()).toHaveLength(1)
+    expect(second.stats).toMatchObject({ processed: 1, reused: 1, skipped: 1 })
+    // A stored extraction that no longer parses is extracted again, not trusted.
+    store.saveMessage({ ...store.getMessage('test_channel', 1)!, extraction: '{"relevant":' })
+    await make(new Tracker()).submit(m)
+    expect(extract).toHaveBeenCalledTimes(2)
   })
 
   it('ignores noise without calling the model', async () => {

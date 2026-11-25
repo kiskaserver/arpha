@@ -36,6 +36,11 @@ export interface PipelineDeps {
   now?: () => number
   /** Ignore reports older than this; Infinity for history import. */
   maxAgeMs?: number
+  /**
+   * Replays (history import): run fusion again on a stored extraction instead of
+   * skipping the message, so a restarted import never pays for the model twice.
+   */
+  reuseStored?: boolean
 }
 
 const MAX_REPLY_DEPTH = 3
@@ -54,9 +59,11 @@ export class Pipeline {
   readonly #d: PipelineDeps
   readonly #now: () => number
   readonly #chains = new Map<string, Promise<void>>()
+  /** The newest submitted version of each post, so queued older versions are dropped. */
+  readonly #latest = new Map<string, RawMessage>()
   #running = 0
   readonly #waiters: (() => void)[] = []
-  #stats = { processed: 0, skipped: 0, failed: 0, events: 0 }
+  #stats = { processed: 0, reused: 0, skipped: 0, failed: 0, events: 0 }
 
   constructor(deps: PipelineDeps) {
     this.#d = deps
@@ -69,8 +76,19 @@ export class Pipeline {
 
   /** Enqueue a message; resolves when it has been fully processed. */
   submit(msg: RawMessage): Promise<void> {
+    // One post arrives several times (new, edited, history sweep) and channels fix
+    // typos seconds after posting: only the newest queued version is worth a model call.
+    const key = `${msg.channel}#${msg.id}`
+    this.#latest.set(key, msg)
     const prev = this.#chains.get(msg.channel) ?? Promise.resolve()
-    const next = prev.then(() => this.#withSlot(() => this.#process(msg)))
+    const next = prev.then(() => {
+      if (this.#latest.get(key) !== msg) {
+        this.#stats.skipped++
+        return
+      }
+      this.#latest.delete(key)
+      return this.#withSlot(() => this.#process(msg))
+    })
     const tail = next.catch(() => {})
     this.#chains.set(msg.channel, tail)
     void tail.then(() => {
@@ -99,9 +117,20 @@ export class Pipeline {
     const text = msg.text.trim()
 
     const existing = store.getMessage(msg.channel, msg.id)
-    if (existing && existing.editDate === msg.editDate && existing.extraction !== null) {
-      this.#stats.skipped++
-      return
+    let cached: Extraction | null = null
+    // Same version, or an edit that left the text alone (reactions, buttons, media).
+    if (
+      existing &&
+      existing.extraction !== null &&
+      (existing.editDate === msg.editDate || existing.text === msg.text)
+    ) {
+      cached = this.#d.reuseStored ? Pipeline.parseStored(existing.extraction) : null
+      // Without a reusable extraction there is nothing new to learn (an outdated
+      // stored schema in a replay is the exception: extract it again).
+      if (!cached && (!this.#d.reuseStored || existing.extraction === '')) {
+        this.#stats.skipped++
+        return
+      }
     }
 
     const now = this.#now()
@@ -118,7 +147,7 @@ export class Pipeline {
       })
 
     const maxAge = this.#d.maxAgeMs ?? MAX_AGE_MS
-    if (text.length < 3 || !HAS_CYRILLIC.test(text) || now - msg.date > maxAge) {
+    if (!cached && (text.length < 3 || !HAS_CYRILLIC.test(text) || now - msg.date > maxAge)) {
       save(null, [])
       this.#stats.skipped++
       return
@@ -126,12 +155,15 @@ export class Pipeline {
 
     try {
       const parents = await this.#replyChain(msg)
-      const extraction = await this.#d.extractor.extract({
-        message: msg,
-        parents,
-        activeTracks: this.#d.tracker.briefs(now),
-        now,
-      })
+      const extraction =
+        cached ??
+        (await this.#d.extractor.extract({
+          message: msg,
+          parents,
+          activeTracks: this.#d.tracker.briefs(now),
+          now,
+        }))
+      if (cached) this.#stats.reused++
 
       if (!extraction.relevant) {
         save(extraction, [])
@@ -140,8 +172,10 @@ export class Pipeline {
       }
 
       const observedAt = Math.min(msg.editDate ?? msg.date, now)
-      // An edited post keeps talking about the tracks its first version created.
-      const parentTrackIds = [...(existing?.trackIds ?? []), ...(parents[0]?.trackIds ?? [])]
+      // An edited post keeps talking about the tracks its first version created
+      // (a replay's stored ids belong to the previous run's tracker, not this one).
+      const own = cached ? [] : (existing?.trackIds ?? [])
+      const parentTrackIds = [...own, ...(parents[0]?.trackIds ?? [])]
       const resolved = extraction.events.map((ev) => this.#resolve(ev, parentTrackIds))
       const ids = this.#d.tracker.apply(resolved, { message: msg, parentTrackIds, observedAt })
       if (extraction.all_clear) this.#d.tracker.allClear(observedAt)
@@ -152,7 +186,12 @@ export class Pipeline {
       this.#stats.processed++
       this.#stats.events += extraction.events.length
       log.info(
-        { events: extraction.events.length, tracks: trackIds, allClear: extraction.all_clear },
+        {
+          events: extraction.events.length,
+          tracks: trackIds,
+          allClear: extraction.all_clear,
+          edited: msg.editDate !== null,
+        },
         'message processed',
       )
     } catch (err) {
@@ -206,7 +245,11 @@ export class Pipeline {
   /** Re-hydrate an extraction saved by a previous run (for tests/eval tooling). */
   static parseStored(raw: string | null): Extraction | null {
     if (!raw) return null
-    const parsed = extractionSchema.safeParse(JSON.parse(raw))
-    return parsed.success ? parsed.data : null
+    try {
+      const parsed = extractionSchema.safeParse(JSON.parse(raw))
+      return parsed.success ? parsed.data : null
+    } catch {
+      return null // corrupted row: treat as absent
+    }
   }
 }

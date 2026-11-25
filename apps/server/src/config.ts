@@ -48,6 +48,8 @@ const envSchema = z.object({
         .filter(Boolean),
     ),
   TG_BACKFILL_MIN: z.coerce.number().int().min(0).max(180).default(30),
+  /** One-time import of the last N posts of every channel (no time window); costs LLM tokens. */
+  HISTORY_IMPORT_POSTS: z.coerce.number().int().min(0).max(5000).default(0),
   /** One-time import of this many hours of channel history to learn routes (costs LLM tokens). */
   HISTORY_IMPORT_HOURS: z.coerce
     .number()
