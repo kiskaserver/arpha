@@ -34,6 +34,9 @@ const server = serve(
   },
 )
 
+// Third-party clients (GramJS) occasionally reject promises nobody awaits; log, don't die.
+process.on('unhandledRejection', (err) => logger.error({ err }, 'unhandled rejection'))
+
 runtime.start().catch((err) => {
   logger.error({ err }, 'startup failed')
 })

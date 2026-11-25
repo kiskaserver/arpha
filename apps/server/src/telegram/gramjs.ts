@@ -71,15 +71,16 @@ export class TelegramIngest implements MessageSource {
       }
       log.info({ channels: this.channels.map((c) => c.key) }, 'telegram connected')
 
-      const chats = [...this.#channels.values()].map((c) => c.entity)
+      // No `chats` filter: GramJS re-resolves it asynchronously and throws unhandled
+      // on some peers. Filtering by peer id in the handler is cheaper and safe.
       const handler = (event: NewMessageEvent) => {
         const m = event.message
         const peer = m.peerId instanceof Api.PeerChannel ? m.peerId.channelId.toString() : null
         const info = peer ? this.#byPeerId.get(peer) : undefined
         if (info) onMessage(toRawMessage(m as unknown as GramMessageLike, info))
       }
-      this.#client.addEventHandler(handler, new NewMessage({ chats }))
-      this.#client.addEventHandler(handler, new EditedMessage({ chats }))
+      this.#client.addEventHandler(handler, new NewMessage({}))
+      this.#client.addEventHandler(handler, new EditedMessage({}))
       this.status = 'connected'
 
       await this.#sweep(onMessage, this.#opts.backfillMin * 60_000, 100)

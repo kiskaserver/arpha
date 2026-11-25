@@ -83,7 +83,8 @@ export class Pipeline {
 
   async #process(msg: RawMessage): Promise<void> {
     const { store, logger } = this.#d
-    const log = logger.child({ channel: msg.channel, msg: msg.id })
+    // Not `msg`: that is pino's message key.
+    const log = logger.child({ channel: msg.channel, messageId: msg.id })
     const text = msg.text.trim()
 
     const existing = store.getMessage(msg.channel, msg.id)
