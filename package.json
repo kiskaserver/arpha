@@ -44,7 +44,7 @@
     "fflate": "^0.8.2",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.2",
-    "telegram": "^2.26.22",
+    "teleproto": "^1.234.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "vitest": "5.1.2",

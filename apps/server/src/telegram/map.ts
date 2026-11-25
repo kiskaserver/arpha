@@ -1,6 +1,6 @@
 import type { RawMessage } from '../extract/types'
 
-/** The fields we read from a GramJS `Api.Message`, so mapping is testable without the library. */
+/** The fields we read from a teleproto (GramJS-compatible) `Api.Message`, so mapping is testable without the library. */
 export interface GramMessageLike {
   id: number
   /** Unix seconds. */
