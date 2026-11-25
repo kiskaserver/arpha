@@ -125,7 +125,7 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
   const infra = new InfraService(store, gazetteer, (items) =>
     bus.publish({ type: 'infra', infra: items }),
   )
-  const feed = new FeedBuffer()
+  const feed = new FeedBuffer(80, store)
 
   const ingest = o.ingest ?? null
   const pipeline =
