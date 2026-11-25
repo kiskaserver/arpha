@@ -1,3 +1,19 @@
 packages:
   - apps/*
   - packages/*
+
+# Supply-chain guard (pnpm ≥ 11 default, made explicit): never install a release
+# younger than 24 h — hijacked versions are usually caught and pulled within hours.
+minimumReleaseAge: 1440
+# Reviewed exceptions only — security/hardening releases of exposed code.
+minimumReleaseAgeExclude:
+  - hono@4.13.22 # hardening: SSE retry injection, mount path guard, parseBody prototype keys
+
+# Only these dependencies may run install scripts.
+allowBuilds:
+  esbuild: true
+
+# Transitive fixes: deprecated/vulnerable glob and minimatch pulled by tooling.
+overrides:
+  "glob@>=9 <14.0.2": ^14.0.6
+  "minimatch@>=7 <11.0.1": ^11.0.9

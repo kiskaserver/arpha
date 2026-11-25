@@ -73,7 +73,7 @@ flowchart LR
 
 | Шар           | Технологія                                            | Чому                                               |
 | ------------- | ----------------------------------------------------- | -------------------------------------------------- |
-| Сервер        | Node 22, **Hono**, TypeScript strict                  | мінімальний оверхед, один процес                   |
+| Сервер        | Node 26 LTS, **Hono**, TypeScript strict              | мінімальний оверхед, один процес                   |
 | Telegram      | **teleproto** (форк GramJS, MTProto user session)     | читає будь-які канали, на які підписаний акаунт    |
 | Розбір тексту | **Claude Haiku 4.5**, forced tool use, zod-валідація  | вільний текст, сленг, реплаї; не вигадує координат |
 | Геокодинг     | власний газетир (GeoNames + куровані орієнтири)       | координати дає лише газетир, не LLM                |
@@ -97,7 +97,8 @@ e2e/            Playwright: desktop, Android, iPhone
 
 ## Швидкий старт
 
-Потрібні Node ≥ 22.13 і pnpm 9.
+Потрібні **Node 26 LTS** (`.nvmrc`) і **pnpm 12** (`npm i -g pnpm@12` — corepack у Node 26 більше не постачається).
+pnpm не встановлює релізи, молодші за 24 год (`minimumReleaseAge`, захист від підмінених пакетів).
 
 ```bash
 pnpm install
@@ -162,6 +163,18 @@ pnpm lint && pnpm typecheck
 - **E2E**: рендер карти, картки, deep link, налаштування, вибір точки, адаптивність без горизонтального скролу,
   PWA-маніфест, service worker, **офлайн**.
 
+## Безпека
+
+- **Реальна IP відвідувача** за Cloudflare → Railway: береться з `CF-Connecting-IP` (далі — перший `X-Forwarded-For`);
+  перевірка — `GET /api/ip`. На ній працюють ліміти й обмеження з'єднань.
+- **CSRF**: змінюючі запити (`/api/push/*`) приймаються лише як `application/json` (інакше 415)
+  і лише з власного `Origin` або зі списку `PUBLIC_ORIGINS` (інакше 403); враховується `Sec-Fetch-Site`.
+- **Rate limits** на IP: API — 240 запитів/хв, push — 20/хв, не більше 8 SSE-з'єднань з однієї адреси.
+- **Заголовки**: суворий CSP, `frame-ancestors 'none'`, HSTS, nosniff, Permissions-Policy, ліміти розміру тіла.
+- **Ланцюг постачання**: `pnpm audit` — 0 вразливостей; релізи молодші за 24 год блокуються;
+  install-скрипти дозволені лише явно (`allowBuilds`); transitive-фікси через `overrides`; gitleaks і Dependabot у CI.
+  Деталі — [SECURITY.md](SECURITY.md) і [ADR 0007](docs/adr/0007-runtime-and-supply-chain.md).
+
 ## Приватність
 
 - Ваша точка зберігається лише на пристрої. Для push на сервер передається точка, округлена до ~1 км.
@@ -185,3 +198,7 @@ a constant-velocity Kalman filter, and streams them over SSE to an installable S
 animates icons smoothly and shows speed, heading and ETA to the user's point. Air-raid alerts come from
 alerts.in.ua and are drawn per oblast/raion/hromada. Web Push notifies about alerts and incoming threats.
 The UI is Ukrainian-only. Run `DEMO_MODE=true pnpm start` to see a simulated attack without any credentials.
+
+Requirements: Node 26 LTS and pnpm 12. Telegram is accessed through [teleproto](https://www.npmjs.com/package/teleproto),
+the maintained fork of GramJS. Security: real client IP behind Cloudflare, CSRF and per-IP rate limits, strict CSP,
+and a 24-hour minimum release age for dependencies — see [SECURITY.md](SECURITY.md).

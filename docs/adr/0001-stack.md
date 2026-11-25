@@ -8,7 +8,7 @@ Single maintainer, deploy on Railway, must run on low-end phones, PWA-installabl
 
 ## Decision
 
-- One Node 22 process serves the API, the SSE stream and the built PWA (no separate CDN/backend).
+- One Node 26 LTS process serves the API, the SSE stream and the built PWA (no separate CDN/backend).
 - **Hono** for HTTP (tiny, standards-based `Request/Response`, easy to test with `app.request`).
 - **Svelte 5** for UI: compiled, ~15 KB runtime; runes give fine-grained updates without a VDOM.
 - **MapLibre GL v6** with OpenFreeMap vector tiles: GPU rendering keeps animation cheap; tiles are cached by the SW.

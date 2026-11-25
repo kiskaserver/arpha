@@ -30,7 +30,7 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: 'node --disable-warning=ExperimentalWarning apps/server/dist/main.mjs',
+        command: 'node apps/server/dist/main.mjs',
         url: `http://localhost:${PORT}/api/health`,
         reuseExistingServer: !process.env.CI,
         env: {
