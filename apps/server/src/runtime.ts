@@ -201,6 +201,7 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
     logger,
     demo: config.DEMO_MODE,
     webDist: config.WEB_DIST,
+    allowedOrigins: config.PUBLIC_ORIGINS,
     push:
       push && config.VAPID_PUBLIC_KEY
         ? { service: push, publicKey: config.VAPID_PUBLIC_KEY }

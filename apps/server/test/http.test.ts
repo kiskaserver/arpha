@@ -10,6 +10,12 @@ import { type AppDeps, createApp } from '../src/http/app'
 import { silentLogger } from '../src/logger'
 import { PushService } from '../src/push/service'
 
+const JSON_ORIGIN = {
+  'content-type': 'application/json',
+  origin: 'http://localhost',
+  host: 'localhost',
+}
+
 function deps(overrides: Partial<AppDeps> = {}): AppDeps {
   return {
     tracks: () => [],
@@ -107,12 +113,10 @@ describe('HTTP API', () => {
   it('push endpoints are 404 when disabled', async () => {
     const app = createApp(deps())
     expect((await app.request('/api/push/key')).status).toBe(404)
-    expect((await app.request('/api/push/subscribe', { method: 'POST', body: '{}' })).status).toBe(
-      404,
-    )
-    expect(
-      (await app.request('/api/push/unsubscribe', { method: 'POST', body: '{}' })).status,
-    ).toBe(404)
+    const post = (path: string) =>
+      app.request(path, { method: 'POST', body: '{}', headers: JSON_ORIGIN })
+    expect((await post('/api/push/subscribe')).status).toBe(404)
+    expect((await post('/api/push/unsubscribe')).status).toBe(404)
   })
 
   it('push subscribe/unsubscribe validate input', async () => {
@@ -125,7 +129,11 @@ describe('HTTP API', () => {
     const app = createApp(deps({ push: { service, publicKey: 'PUB' } }))
     expect(await (await app.request('/api/push/key')).json()).toEqual({ publicKey: 'PUB' })
 
-    const bad = await app.request('/api/push/subscribe', { method: 'POST', body: 'nope' })
+    const bad = await app.request('/api/push/subscribe', {
+      method: 'POST',
+      body: 'nope',
+      headers: JSON_ORIGIN,
+    })
     expect(bad.status).toBe(400)
 
     const body = JSON.stringify({
@@ -135,7 +143,7 @@ describe('HTTP API', () => {
     const ok = await app.request('/api/push/subscribe', {
       method: 'POST',
       body,
-      headers: { 'content-type': 'application/json' },
+      headers: JSON_ORIGIN,
     })
     expect(ok.status).toBe(201)
     expect(service.size).toBe(1)
@@ -143,20 +151,133 @@ describe('HTTP API', () => {
     const tooBig = await app.request('/api/push/subscribe', {
       method: 'POST',
       body: 'x'.repeat(10_000),
-      headers: { 'content-type': 'application/json' },
+      headers: JSON_ORIGIN,
     })
     expect(tooBig.status).toBe(413)
 
     expect(
-      (await app.request('/api/push/unsubscribe', { method: 'POST', body: '{"endpoint":1}' }))
-        .status,
+      (
+        await app.request('/api/push/unsubscribe', {
+          method: 'POST',
+          body: '{"endpoint":1}',
+          headers: JSON_ORIGIN,
+        })
+      ).status,
     ).toBe(400)
     const un = await app.request('/api/push/unsubscribe', {
       method: 'POST',
       body: JSON.stringify({ endpoint: 'https://push.example/1' }),
+      headers: JSON_ORIGIN,
     })
     expect(un.status).toBe(200)
     expect(service.size).toBe(0)
+  })
+
+  it('CSRF: state-changing calls need JSON from our own origin', async () => {
+    const service = new PushService({
+      store: new Store(':memory:'),
+      boundaries: Boundaries.empty(),
+      send: vi.fn(),
+      logger: silentLogger,
+    })
+    const app = createApp(
+      deps({ push: { service, publicKey: 'P' }, allowedOrigins: ['https://arpha.svitix.com'] }),
+    )
+    const body = JSON.stringify({ endpoint: 'https://push.example/1' })
+    const post = (headers: Record<string, string>) =>
+      app.request('/api/push/unsubscribe', { method: 'POST', body, headers })
+    // A cross-site "simple" form/text POST.
+    expect(
+      (await post({ 'content-type': 'text/plain', origin: 'https://evil.example' })).status,
+    ).toBe(415)
+    // JSON from another site.
+    expect(
+      (
+        await post({
+          'content-type': 'application/json',
+          origin: 'https://evil.example',
+          host: 'arpha.svitix.com',
+        })
+      ).status,
+    ).toBe(403)
+    // Opaque origin from a sandboxed frame.
+    expect((await post({ 'content-type': 'application/json', origin: 'null' })).status).toBe(403)
+    // No Origin at all.
+    expect((await post({ 'content-type': 'application/json' })).status).toBe(403)
+    // Our public origin (through the CDN the Host may differ) and same-host requests pass.
+    expect(
+      (
+        await post({
+          'content-type': 'application/json',
+          origin: 'https://arpha.svitix.com',
+          host: 'internal:8080',
+        })
+      ).status,
+    ).toBe(200)
+    expect(
+      (
+        await post({
+          'content-type': 'application/json; charset=utf-8',
+          origin: 'https://arpha.svitix.com',
+          host: 'arpha.svitix.com',
+          'sec-fetch-site': 'same-origin',
+        })
+      ).status,
+    ).toBe(200)
+    // Same host but the browser says cross-site and origin is not whitelisted.
+    expect(
+      (
+        await post({
+          'content-type': 'application/json',
+          origin: 'https://other.test',
+          host: 'other.test',
+          'sec-fetch-site': 'cross-site',
+        })
+      ).status,
+    ).toBe(403)
+  })
+
+  it('sees the real visitor IP behind Cloudflare and rate-limits per visitor', async () => {
+    const app = createApp(deps())
+    const ip = await (
+      await app.request('/api/ip', {
+        headers: {
+          'cf-connecting-ip': '203.0.113.7',
+          'x-forwarded-for': '10.0.0.1',
+          'cf-ray': 'x',
+        },
+      })
+    ).json()
+    expect(ip).toEqual({ ip: '203.0.113.7', viaCloudflare: true })
+    const ipOf = async (headers: Record<string, string>) =>
+      ((await (await app.request('/api/ip', { headers })).json()) as { ip: string }).ip
+    expect(await ipOf({ 'x-forwarded-for': '198.51.100.2, 10.0.0.1' })).toBe('198.51.100.2')
+    expect(await ipOf({})).toBe('unknown')
+
+    let last = 200
+    for (let i = 0; i < 241; i++) {
+      last = (await app.request('/api/health', { headers: { 'cf-connecting-ip': '203.0.113.9' } }))
+        .status
+    }
+    expect(last).toBe(429)
+    // Another visitor is unaffected.
+    expect(
+      (await app.request('/api/health', { headers: { 'cf-connecting-ip': '203.0.113.10' } }))
+        .status,
+    ).toBe(200)
+  })
+
+  it('caps concurrent streams per visitor', async () => {
+    const app = createApp(deps({ maxStreamsPerIp: 1 }))
+    const h = { headers: { 'cf-connecting-ip': '203.0.113.20' } }
+    const first = await app.request('/api/stream', h)
+    await new Promise((r) => setTimeout(r, 10))
+    expect((await app.request('/api/stream', h)).status).toBe(429)
+    await first.body!.cancel()
+    await new Promise((r) => setTimeout(r, 20))
+    const again = await app.request('/api/stream', h)
+    expect(again.status).toBe(200)
+    await again.body!.cancel()
   })
 
   it('unknown API routes are JSON 404', async () => {

@@ -18,6 +18,16 @@ const envSchema = z.object({
   DATA_DIR: z.string().default('./data/runtime'),
   WEB_DIST: z.string().default('./apps/web/dist'),
   DEMO_MODE: bool,
+  /** Origins allowed to call state-changing endpoints (CSRF), comma-separated. */
+  PUBLIC_ORIGINS: z
+    .string()
+    .default('https://arpha.svitix.com')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean),
+    ),
 
   TG_API_ID: z.coerce.number().int().positive().optional(),
   TG_API_HASH: optionalString,

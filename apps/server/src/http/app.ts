@@ -12,6 +12,7 @@ import { z } from 'zod'
 import type { EventBus } from '../bus'
 import type { Logger } from '../logger'
 import type { PushService } from '../push/service'
+import { clientIp, RateLimiter, rateLimit, sameOriginJson } from './security'
 
 export interface AppDeps {
   tracks: () => Track[]
@@ -29,6 +30,10 @@ export interface AppDeps {
   /** SSE heartbeat; proxies (Railway, Cloudflare) drop idle streams. */
   heartbeatMs?: number
   maxStreams?: number
+  /** Concurrent SSE streams allowed from one visitor IP. */
+  maxStreamsPerIp?: number
+  /** Public origins allowed to POST (besides the request's own host). */
+  allowedOrigins?: string[]
   now?: () => number
 }
 
@@ -38,6 +43,9 @@ export function createApp(d: AppDeps): Hono {
   const app = new Hono()
   const now = d.now ?? Date.now
   let streams = 0
+  const streamsByIp = new Map<string, number>()
+  const apiLimit = new RateLimiter(240, 60_000, now)
+  const pushLimit = new RateLimiter(20, 60_000, now)
 
   app.use(
     '*',
@@ -67,6 +75,17 @@ export function createApp(d: AppDeps): Hono {
     return compress()(c, next)
   })
 
+  app.use('/api/*', rateLimit(apiLimit))
+  // State-changing endpoints: JSON from our own origin only (CSRF), tighter limit.
+  app.use('/api/push/subscribe', sameOriginJson(d.allowedOrigins ?? []), rateLimit(pushLimit))
+  app.use('/api/push/unsubscribe', sameOriginJson(d.allowedOrigins ?? []), rateLimit(pushLimit))
+
+  /** What the server sees as the visitor's address (diagnostics for the CDN setup). */
+  app.get('/api/ip', (c) => {
+    c.header('Cache-Control', 'no-store')
+    return c.json({ ip: clientIp(c), viaCloudflare: Boolean(c.req.header('cf-ray')) })
+  })
+
   app.get('/api/health', (c) =>
     c.json({
       ok: true,
@@ -94,6 +113,11 @@ export function createApp(d: AppDeps): Hono {
 
   app.get('/api/stream', (c) => {
     if (streams >= (d.maxStreams ?? 5000)) return c.text('Too many connections', 503)
+    const ip = clientIp(c)
+    const mine = streamsByIp.get(ip) ?? 0
+    if (mine >= (d.maxStreamsPerIp ?? 8))
+      return c.text('Too many connections from your address', 429)
+    streamsByIp.set(ip, mine + 1)
     c.header('Cache-Control', 'no-cache, no-transform')
     c.header('X-Accel-Buffering', 'no')
     return streamSSE(c, async (stream) => {
@@ -129,6 +153,9 @@ export function createApp(d: AppDeps): Hono {
         clearInterval(heartbeat)
         unsubscribe()
         streams--
+        const left = (streamsByIp.get(ip) ?? 1) - 1
+        if (left > 0) streamsByIp.set(ip, left)
+        else streamsByIp.delete(ip)
       }
     })
   })
