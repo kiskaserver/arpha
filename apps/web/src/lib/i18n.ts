@@ -1,0 +1,102 @@
+/** Every user-visible string lives here. The UI is Ukrainian only. */
+export const uk = {
+  appName: 'Арфа',
+  appTagline: 'Повітряні загрози · Запорізька область',
+  demoBadge: 'Демо',
+  demoHint: 'Демо-режим: показано змодельовану атаку, а не реальні дані.',
+
+  alertActive: 'Повітряна тривога',
+  alertNone: 'Тривоги немає',
+  alertUnknown: 'Статус тривоги невідомий',
+  alertMine: 'Тривога у вашій громаді',
+  alertsList: 'Тривоги в області',
+
+  connOnline: 'Онлайн',
+  connConnecting: 'Підключення…',
+  connOffline: 'Немає з’єднання — показано останні дані',
+
+  threatsTitle: 'Загрози',
+  threatsNone: 'Активних загроз не зафіксовано',
+  threatsCount: (n: number) => `${n} ${plural(n, 'загроза', 'загрози', 'загроз')}`,
+  noPosition: 'без координат',
+
+  speed: 'Швидкість',
+  course: 'Курс',
+  eta: 'Підліт до вас',
+  etaNone: 'Курс не на вас',
+  etaArrived: 'Поруч',
+  distance: 'Відстань',
+  closest: 'Найближче зближення',
+  closestIn: (min: string, km: number) => `${km} км через ${min}`,
+  target: 'Ціль',
+  place: 'Останнє місце',
+  updated: 'Оновлено',
+  confidence: 'Достовірність',
+  sources: 'Джерела',
+  statusDestroyed: 'Збито',
+  statusLost: 'Втрачено',
+  approaching: 'наближається',
+  receding: 'віддаляється',
+  stationary: 'на місці',
+  close: 'Закрити',
+
+  settings: 'Налаштування',
+  myPoint: 'Моя точка',
+  myPointHint: 'Для розрахунку часу підльоту. Зберігається лише на цьому пристрої.',
+  useGps: 'Визначити за GPS',
+  pickOnMap: 'Вибрати на карті',
+  pickOnMapHint: 'Торкніться карти, щоб поставити точку',
+  clearPoint: 'Скинути',
+  pointNotSet: 'Не задано — використовується центр Запоріжжя',
+  gpsDenied: 'Доступ до геолокації заборонено',
+  gpsFailed: 'Не вдалося визначити місцезнаходження',
+  radius: 'Радіус небезпеки',
+  km: 'км',
+  kmh: 'км/год',
+  theme: 'Тема',
+  themeAuto: 'Авто',
+  themeLight: 'Світла',
+  themeDark: 'Темна',
+  push: 'Сповіщення',
+  pushAlerts: 'Про тривогу в моїй громаді',
+  pushThreats: 'Про загрози, що летять на мене',
+  pushEnable: 'Увімкнути сповіщення',
+  pushDisable: 'Вимкнути сповіщення',
+  pushOn: 'Сповіщення увімкнено',
+  pushUnsupported:
+    'Цей браузер не підтримує push. На iPhone спершу додайте застосунок на головний екран.',
+  pushDenied: 'Сповіщення заборонено в налаштуваннях браузера',
+  pushUnavailable: 'Сервер не налаштований для сповіщень',
+  pushFailed: 'Не вдалося увімкнути сповіщення',
+  install: 'Встановити застосунок',
+  about: 'Про застосунок',
+  disclaimer:
+    'Неофіційне джерело. Дані зібрані автоматично з публічних Telegram-каналів і можуть бути неточними або запізнюватися. Завжди дійте за офіційними сигналами тривоги та порадами ДСНС.',
+  sourceCode: 'Вихідний код',
+  updateReady: 'Доступна нова версія',
+  reload: 'Оновити',
+  locateMe: 'Моє місцезнаходження',
+  zoomRegion: 'Вся область',
+  openList: 'Список загроз',
+  mapLabel: 'Карта загроз',
+  mapLoading: 'Завантаження карти…',
+  mapFailed: 'Не вдалося завантажити карту',
+
+  ago: (sec: number) => {
+    if (sec < 10) return 'щойно'
+    if (sec < 60) return `${Math.floor(sec)} с тому`
+    const min = Math.floor(sec / 60)
+    if (min < 60) return `${min} хв тому`
+    const h = Math.floor(min / 60)
+    return `${h} год тому`
+  },
+} as const
+
+/** Ukrainian plural forms: 1 загроза, 2 загрози, 5 загроз, 21 загроза, 11 загроз. */
+export function plural(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return one
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few
+  return many
+}

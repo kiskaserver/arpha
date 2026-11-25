@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Повідомити про вразливість
+    url: https://github.com/kiskaserver/arpha/security/advisories/new
+    about: Будь ласка, не публікуйте вразливості у відкритих issues.
