@@ -7,8 +7,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Api, TelegramClient } from 'telegram'
-import { LogLevel } from 'telegram/extensions/Logger'
-import { StringSession } from 'telegram/sessions'
+import { LogLevel } from 'telegram/extensions/Logger.js'
+import { StringSession } from 'telegram/sessions/index.js'
 import { loadConfig } from '../apps/server/src/config'
 import { channelKey, type GramMessageLike, toRawMessage } from '../apps/server/src/telegram/map'
 
