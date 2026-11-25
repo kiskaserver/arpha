@@ -1,0 +1,17 @@
+name: Помилка / Bug
+description: Щось працює не так
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes: { label: Що сталося, description: "Що очікували і що побачили" }
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes: { label: Як відтворити }
+  - type: input
+    id: device
+    attributes: { label: Пристрій і браузер, placeholder: "iPhone 13, Safari 18 / Pixel 7, Chrome" }
+  - type: textarea
+    id: message
+    attributes: { label: Текст повідомлення з каналу (якщо розпізнано неправильно) }

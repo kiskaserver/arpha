@@ -1,0 +1,11 @@
+name: Пропозиція / Feature
+description: Ідея для покращення
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes: { label: Яку проблему це вирішує }
+    validations: { required: true }
+  - type: textarea
+    id: solution
+    attributes: { label: Як це могло б працювати }

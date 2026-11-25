@@ -1,0 +1,58 @@
+{
+  "name": "arpha",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Арфа — карта повітряних загроз Запорізької області в реальному часі (PWA)",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @arpha/server --filter @arpha/web dev",
+    "build": "pnpm --filter @arpha/web build && pnpm --filter @arpha/server build",
+    "start": "node --disable-warning=ExperimentalWarning apps/server/dist/main.mjs",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e && pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage --project shared --project server --coverage.reportsDirectory=coverage/node && vitest run --coverage --project web --coverage.reportsDirectory=coverage/web",
+    "test:e2e": "playwright test",
+    "eval": "tsx scripts/eval-extractor.ts",
+    "tg:login": "tsx scripts/tg-login.ts",
+    "tg:dump": "tsx scripts/tg-dump.ts",
+    "push:keys": "tsx scripts/push-keys.ts",
+    "data:gazetteer": "tsx scripts/build-gazetteer.ts",
+    "data:boundaries": "tsx scripts/build-boundaries.ts",
+    "prepare": "husky || true"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
+    "@biomejs/biome": "2.6.9",
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@playwright/test": "1.65.1",
+    "@types/node": "^22.20.7",
+    "@types/web-push": "^3.6.4",
+    "@vitest/coverage-v8": "5.1.2",
+    "fast-check": "^4.11.0",
+    "fflate": "^0.8.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.0.0",
+    "telegram": "^2.26.22",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "5.1.2",
+    "web-push": "^4.0.0"
+  },
+  "lint-staged": {
+    "*.{ts,js,json,svelte,css,md}": "biome check --write --no-errors-on-unmatched"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

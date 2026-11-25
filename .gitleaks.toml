@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public test fixtures"
+paths = ['''apps/.*/test/.*''', '''e2e/.*''']

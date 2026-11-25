@@ -1,0 +1,21 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.session
+*.sqlite
+*.sqlite-*
+data/runtime/
+data/samples/
+playwright-report/
+test-results/
+.lighthouseci/
+.DS_Store
+*.log
+.vite/
+.deploy-test/
+
+# Local planning notes
+PLAN.md
