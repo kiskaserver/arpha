@@ -2,7 +2,9 @@
 import { type FeedItem, threatLabelUk } from '@arpha/shared'
 import { formatAgo, formatDistance, formatEta } from '../lib/format'
 import { uk } from '../lib/i18n'
+import { clampHeight, pickSnap, type Snap, snapHeights, toggleSnap } from '../lib/sheet'
 import type { ThreatRow } from '../lib/view'
+import AnalyticsView, { type Corridor } from './AnalyticsView.svelte'
 import FeedList from './FeedList.svelte'
 import ThreatCard from './ThreatCard.svelte'
 import ThreatIcon from './ThreatIcon.svelte'
@@ -12,36 +14,102 @@ interface Props {
   feed: FeedItem[]
   selected: string | null
   now: number
+  showRoutes: boolean
   onselect: (id: string | null) => void
+  ontoggleroutes: (corridors: Corridor[] | null) => void
 }
-let { rows, feed, selected, now, onselect }: Props = $props()
-let expanded = $state(false)
-let tab = $state<'threats' | 'feed'>('threats')
+let { rows, feed, selected, now, showRoutes, onselect, ontoggleroutes }: Props = $props()
+let tab = $state<'threats' | 'feed' | 'analytics'>('threats')
+let snap = $state<Snap>('peek')
+/** Live height while the finger is on the handle; null when settled. */
+let dragHeight = $state<number | null>(null)
+let viewport = $state(typeof window === 'undefined' ? 800 : window.innerHeight)
 
 const active = $derived(rows.filter((r) => r.track.status === 'active'))
 const selectedRow = $derived(rows.find((r) => r.track.id === selected) ?? null)
 const nearest = $derived(active.find((r) => r.approach?.etaMin != null) ?? null)
+const settled = $derived(snap === 'peek' && selectedRow ? 'half' : snap)
+const height = $derived(dragHeight ?? snapHeights(viewport)[settled])
+const expanded = $derived(settled !== 'peek')
+
+let drag: {
+  y: number
+  h: number
+  lastY: number
+  lastT: number
+  moved: boolean
+  target: HTMLElement
+} | null = null
+
+function onDown(e: PointerEvent) {
+  if (e.button !== 0) return
+  viewport = window.innerHeight
+  drag = {
+    y: e.clientY,
+    h: height,
+    lastY: e.clientY,
+    lastT: e.timeStamp,
+    moved: false,
+    target: e.target as HTMLElement,
+  }
+  // Capture right away: the finger leaves the small handle within the first pixels.
+  ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+}
+
+function onMove(e: PointerEvent) {
+  if (!drag) return
+  if (!drag.moved && Math.abs(e.clientY - drag.y) > 6) drag.moved = true
+  if (!drag.moved) return
+  dragHeight = clampHeight(drag.h + (drag.y - e.clientY), viewport)
+  drag.lastY = e.clientY
+  drag.lastT = e.timeStamp
+}
+
+function onUp(e: PointerEvent) {
+  if (!drag) return
+  const d = drag
+  drag = null
+  if (!d.moved) {
+    // A tap. With the pointer captured, the click lands on the handle, so forward taps on tabs.
+    const tabButton = d.target.closest<HTMLElement>('[role="tab"]')
+    if (tabButton) tabButton.click()
+    else snap = toggleSnap(settled)
+    return
+  }
+  const dt = Math.max(1, e.timeStamp - d.lastT)
+  const velocity = (d.lastY - e.clientY) / dt
+  snap = pickSnap(dragHeight ?? height, velocity, viewport, settled)
+  dragHeight = null
+}
+
+function openTab(t: typeof tab) {
+  tab = t
+  if (snap === 'peek') snap = 'half'
+}
 </script>
+
+<svelte:window onresize={() => (viewport = window.innerHeight)} />
 
 <section
   class="panel"
-  class:expanded={expanded || selectedRow}
+  class:expanded
+  class:dragging={dragHeight !== null}
+  style:--sheet-h={`${height}px`}
   aria-label={uk.threatsTitle}
   data-testid="threat-panel"
 >
-  {#if selectedRow}
-    <div class="scroll">
-      <ThreatCard row={selectedRow} {now} onclose={() => onselect(null)} />
-    </div>
-  {:else}
-    <button
-      class="handle"
-      type="button"
-      aria-expanded={expanded}
-      aria-controls="threat-list"
-      onclick={() => (expanded = !expanded)}
-    >
-      <span class="grip" aria-hidden="true"></span>
+  <div
+    class="grab"
+    role="presentation"
+    onpointerdown={onDown}
+    onpointermove={onMove}
+    onpointerup={onUp}
+    onpointercancel={onUp}
+    data-testid="sheet-handle"
+  >
+    <span class="grip" aria-hidden="true"></span>
+  {#if !selectedRow}
+    <div class="handle">
       <span class="summary">
         <strong data-testid="threat-count">
           {active.length ? uk.threatsCount(active.length) : uk.threatsNone}
@@ -53,15 +121,25 @@ const nearest = $derived(active.find((r) => r.approach?.etaMin != null) ?? null)
           </span>
         {/if}
       </span>
-    </button>
-
-    <div class="tabs" role="tablist">
-      <button type="button" role="tab" aria-selected={tab === 'threats'} class:on={tab === 'threats'} onclick={() => ((tab = 'threats'), (expanded = true))}>{uk.tabThreats}</button>
-      <button type="button" role="tab" aria-selected={tab === 'feed'} class:on={tab === 'feed'} onclick={() => ((tab = 'feed'), (expanded = true))} data-testid="tab-feed">{uk.tabFeed}{#if feed.length}<span class="badge">{feed.length}</span>{/if}</button>
     </div>
 
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" aria-selected={tab === 'threats'} class:on={tab === 'threats'} aria-expanded={expanded} onclick={() => openTab('threats')}>{uk.tabThreats}</button>
+      <button type="button" role="tab" aria-selected={tab === 'feed'} class:on={tab === 'feed'} onclick={() => openTab('feed')} data-testid="tab-feed">{uk.tabFeed}{#if feed.length}<span class="badge">{feed.length}</span>{/if}</button>
+      <button type="button" role="tab" aria-selected={tab === 'analytics'} class:on={tab === 'analytics'} onclick={() => openTab('analytics')} data-testid="tab-analytics">{uk.tabAnalytics}</button>
+    </div>
+  {/if}
+  </div>
+
+  {#if selectedRow}
+    <div class="scroll">
+      <ThreatCard row={selectedRow} {now} onclose={() => onselect(null)} />
+    </div>
+  {:else}
     {#if tab === 'feed'}
       <div class="scroll"><FeedList items={feed} onselect={(id) => onselect(id)} /></div>
+    {:else if tab === 'analytics'}
+      <div class="scroll"><AnalyticsView {showRoutes} {ontoggleroutes} /></div>
     {:else}
     <ul id="threat-list" class="scroll list" data-testid="threat-list">
       {#each rows as r (r.track.id)}
@@ -104,33 +182,35 @@ const nearest = $derived(active.find((r) => r.approach?.etaMin != null) ?? null)
     left: 0;
     right: 0;
     bottom: 0;
-    max-height: 64px;
+    height: var(--sheet-h, 64px);
     display: flex;
     flex-direction: column;
     background: var(--panel-solid);
     border-radius: 18px 18px 0 0;
     box-shadow: var(--shadow-up);
     padding-bottom: env(safe-area-inset-bottom);
-    transition: max-height 0.25s ease;
+    transition: height 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
     overflow: hidden;
   }
-  .panel.expanded {
-    max-height: min(62vh, 560px);
+  .panel.dragging {
+    transition: none;
   }
-  .handle {
+  .grab {
+    flex: none;
     display: flex;
     flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
-    padding: 8px 16px 12px;
-    border: 0;
-    background: none;
+    touch-action: none;
+    cursor: grab;
+    user-select: none;
+    padding-top: 8px;
+  }
+  .handle {
+    padding: 6px 16px 10px;
     color: var(--text);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
   }
   .grip {
+    flex: none;
+    margin-bottom: 2px;
     align-self: center;
     width: 40px;
     height: 4px;
@@ -151,7 +231,7 @@ const nearest = $derived(active.find((r) => r.approach?.etaMin != null) ?? null)
   }
   .tabs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 4px;
     margin: 0 16px 6px;
     padding: 3px;
@@ -262,16 +342,16 @@ const nearest = $derived(active.find((r) => r.approach?.etaMin != null) ?? null)
       right: auto;
       bottom: 12px;
       width: 360px;
-      max-height: none;
+      height: auto;
       border-radius: 18px;
       box-shadow: var(--shadow);
     }
     .grip {
       display: none;
     }
-    .handle {
+    .grab {
       cursor: default;
-      pointer-events: none;
+      touch-action: auto;
     }
   }
 </style>

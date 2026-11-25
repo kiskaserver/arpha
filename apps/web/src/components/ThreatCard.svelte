@@ -1,5 +1,11 @@
 <script lang="ts">
-import { formatMinutesUk, threatLabelUk } from '@arpha/shared'
+import {
+  flightMinutes,
+  formatMinutesUk,
+  haversineKm,
+  threatLabelUk,
+  weaponSpec,
+} from '@arpha/shared'
 import {
   formatAgo,
   formatCourse,
@@ -20,6 +26,13 @@ interface Props {
 let { row, now, onclose }: Props = $props()
 const t = $derived(row.track)
 const a = $derived(row.approach)
+const spec = $derived(weaponSpec(t.model, t.type))
+/** Launch-to-impact time for missiles when both ends are known. */
+const flight = $derived(
+  spec && t.origin && t.target && (t.type === 'ballistic' || t.type === 'cruise_missile')
+    ? flightMinutes(spec, haversineKm(t.origin, t.target))
+    : null,
+)
 </script>
 
 <article class="card" aria-labelledby="card-title" data-testid="threat-card">
@@ -68,6 +81,7 @@ const a = $derived(row.approach)
     {#if t.placeName}<div><dt>{uk.place}</dt><dd>{t.placeName}</dd></div>{/if}
     {#if t.target && a}<div><dt>{uk.target}</dt><dd>{t.target.name}</dd></div>{/if}
     {#if t.origin}<div><dt>{uk.origin}</dt><dd>{uk.fromSide(t.origin.name)}</dd></div>{/if}
+    {#if flight !== null}<div><dt>{uk.flightTime}</dt><dd>~{formatMinutesUk(flight)}</dd></div>{/if}
     {#if t.prediction?.impact}<div><dt>{uk.impactZone}</dt><dd>~{t.prediction.impact.radiusKm} {uk.km}</dd></div>{/if}
     <div><dt>{uk.confidence}</dt><dd>{Math.round(t.confidence * 100)}%</dd></div>
   </dl>
@@ -85,6 +99,23 @@ const a = $derived(row.approach)
         {/each}
       </ul>
       <p class="hint">{uk.likelyTargetsHint}</p>
+    </section>
+  {/if}
+
+  {#if spec}
+    <section class="specs" data-testid="specs">
+      <h3>{uk.specs}{t.model ? '' : ` (${uk.specsTypical})`}</h3>
+      <p class="model">{spec.nameUk}</p>
+      <dl>
+        <div><dt>{uk.speed}</dt><dd>{spec.cruiseKmh}–{spec.maxKmh} {uk.kmh}</dd></div>
+        <div><dt>{uk.range}</dt><dd>{spec.rangeKm} {uk.km}</dd></div>
+        <div><dt>{uk.warhead}</dt><dd>{spec.warheadKg} кг</dd></div>
+      </dl>
+      <p class="note">{spec.note}</p>
+      <p class="src">
+        {uk.openSources}:
+        {#each spec.sources as src, i (src)}<a href={src} target="_blank" rel="noopener noreferrer">[{i + 1}]</a>{' '}{/each}
+      </p>
     </section>
   {/if}
 
@@ -181,6 +212,21 @@ const a = $derived(row.approach)
   .eta.hot dd {
     color: var(--danger);
   }
+  .specs .model {
+    margin: 0 0 6px;
+    font-weight: 700;
+  }
+  .specs .note,
+  .specs .src {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .specs .src a {
+    color: var(--muted);
+    margin-right: 4px;
+  }
+  .specs h3,
   .predict h3,
   .sources h3 {
     margin: 0 0 6px;

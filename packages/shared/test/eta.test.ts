@@ -20,6 +20,7 @@ function track(overrides: Partial<Track> = {}): Track {
     target: null,
     origin: null,
     prediction: null,
+    model: null,
     confidence: 0.8,
     sources: [],
     createdAt: NOW,

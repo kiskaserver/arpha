@@ -39,6 +39,8 @@ export interface Prediction {
 export interface Track {
   id: string
   type: ThreatType
+  /** Weapon model id from specs.ts when a source named it (Герань-3, Іскандер, Х-59…). */
+  model: string | null
   count: number | null
   status: TrackStatus
   /** Estimated position at `stateAt`; null when only a target is known (e.g. "балістика на Запоріжжя"). */

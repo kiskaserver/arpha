@@ -11,6 +11,7 @@ import {
   type Track,
   type TrackSource,
   typesCompatible,
+  weaponSpec,
   ZAPORIZHZHIA,
 } from '@arpha/shared'
 import type { ExtractedEvent, RawMessage, TrackBrief } from '../extract/types'
@@ -41,6 +42,13 @@ export interface ApplyContext {
   observedAt: number
 }
 
+export interface PathPoint {
+  lat: number
+  lon: number
+  at: number
+  place: string
+}
+
 /** Internal per-track state; persisted so restarts don't lose the picture. */
 export interface TrackState {
   track: Track
@@ -48,13 +56,15 @@ export interface TrackState {
   lastObsAt: number
   channels: string[]
   removeAt: number | null
+  /** Reported places in order — saved as a route when the track ends. */
+  path: PathPoint[]
 }
 
 export interface TrackerHooks {
   /** Forecast attached to every published state (see predict/predictor.ts). */
   predict?(track: Track, now: number): Track['prediction']
   onChange?(track: Track, state: TrackState): void
-  onRemove?(id: string): void
+  onRemove?(id: string, state: TrackState): void
 }
 
 /** Below this, the filter's velocity is noise, not a course. */
@@ -92,7 +102,11 @@ export class Tracker {
 
   constructor(hooks: TrackerHooks = {}, initial: TrackState[] = []) {
     this.#hooks = hooks
-    for (const s of initial) this.#states.set(s.track.id, s)
+    for (const s of initial) {
+      s.path ??= []
+      s.track.model ??= null
+      this.#states.set(s.track.id, s)
+    }
   }
 
   get(id: string): Track | undefined {
@@ -142,7 +156,7 @@ export class Tracker {
     for (const s of [...this.#states.values()]) {
       if (s.removeAt !== null && now >= s.removeAt) {
         this.#states.delete(s.track.id)
-        this.#hooks.onRemove?.(s.track.id)
+        this.#hooks.onRemove?.(s.track.id, s)
         continue
       }
       const ttl = THREAT_PROFILES[s.track.type].ttlMin * 60_000
@@ -286,17 +300,19 @@ export class Tracker {
 
   #create(ev: ResolvedEvent, ctx: ApplyContext, obs: Observation | null): TrackState {
     const profile = THREAT_PROFILES[ev.type]
+    const speed = cruiseKmh(ev.type, ev.model)
     const now = ctx.observedAt
     let kf: KalmanState | null = null
     if (obs && profile.moving) {
       const course = this.#courseHint(ev, obs.point)
-      const vel = course === null ? { x: 0, y: 0 } : velocityFrom(course, profile.speedKmh)
-      const velSigma = (profile.speedKmh / 60) * (course === null ? 1 : 0.35)
+      const vel = course === null ? { x: 0, y: 0 } : velocityFrom(course, speed)
+      const velSigma = (speed / 60) * (course === null ? 1 : 0.35)
       kf = kfInit(frame.toXY(obs.point), obs.sigma, vel, velSigma)
     }
     const track: Track = {
       id: newId(),
       type: ev.type,
+      model: ev.model ?? null,
       count: ev.count,
       status: 'active',
       position: obs?.point ?? null,
@@ -313,7 +329,8 @@ export class Tracker {
       createdAt: now,
       updatedAt: now,
     }
-    const state: TrackState = { track, kf, lastObsAt: now, channels: [], removeAt: null }
+    const state: TrackState = { track, kf, lastObsAt: now, channels: [], removeAt: null, path: [] }
+    if (obs) addPathPoint(state, obs, now)
     this.#states.set(track.id, state)
     this.#refresh(state)
     this.#touch(state, ev, ctx)
@@ -325,13 +342,16 @@ export class Tracker {
     // A generic "unknown" report must not downgrade a specific type, but a specific one upgrades it.
     const type: ThreatType = state.track.type === 'unknown' ? ev.type : state.track.type
     const profile = THREAT_PROFILES[type]
+    const model = ev.model ?? state.track.model ?? null
+    const speed = cruiseKmh(type, model)
+    const maxSpeed = maxKmh(type, model)
     const target = toTarget(ev.towardPlace) ?? state.track.target
 
     if (obs && profile.moving) {
       if (!state.kf) {
         const course = this.#courseHint(ev, obs.point)
-        const vel = course === null ? { x: 0, y: 0 } : velocityFrom(course, profile.speedKmh)
-        state.kf = kfInit(frame.toXY(obs.point), obs.sigma, vel, profile.speedKmh / 60)
+        const vel = course === null ? { x: 0, y: 0 } : velocityFrom(course, speed)
+        state.kf = kfInit(frame.toXY(obs.point), obs.sigma, vel, speed / 60)
       } else {
         const dt = (at - state.track.stateAt) / 60_000
         let kf = kfPredict(state.kf, dt, profile.processNoise)
@@ -339,8 +359,8 @@ export class Tracker {
         if (d2 > 16 && haversineKm(state.track.position ?? obs.point, obs.point) > 40) {
           // Wildly inconsistent: the object (or our association) jumped. Re-seed from the report.
           const course = this.#courseHint(ev, obs.point)
-          const vel = course === null ? { x: 0, y: 0 } : velocityFrom(course, profile.speedKmh)
-          kf = kfInit(frame.toXY(obs.point), obs.sigma, vel, profile.speedKmh / 60)
+          const vel = course === null ? { x: 0, y: 0 } : velocityFrom(course, speed)
+          kf = kfInit(frame.toXY(obs.point), obs.sigma, vel, speed / 60)
         } else {
           kf = updated
         }
@@ -353,7 +373,7 @@ export class Tracker {
             (profile.speedKmh / 60) * 0.35,
           ).state
         }
-        state.kf = kfClampSpeed(kf, profile.maxSpeedKmh)
+        state.kf = kfClampSpeed(kf, maxSpeed)
       }
     } else if (!profile.moving && obs) {
       state.kf = null
@@ -362,6 +382,7 @@ export class Tracker {
     state.track = {
       ...state.track,
       type,
+      model,
       count: ev.count ?? state.track.count,
       stateAt: obs ? at : state.track.stateAt,
       position: obs && !profile.moving ? obs.point : state.track.position,
@@ -370,7 +391,10 @@ export class Tracker {
       target,
       origin: toTarget(ev.fromPlace) ?? state.track.origin,
     }
-    if (obs) state.lastObsAt = Math.max(state.lastObsAt, ctx.observedAt)
+    if (obs) {
+      state.lastObsAt = Math.max(state.lastObsAt, ctx.observedAt)
+      addPathPoint(state, obs, ctx.observedAt)
+    }
     this.#refresh(state)
     this.#touch(state, ev, ctx)
   }
@@ -449,6 +473,24 @@ export class Tracker {
   snapshot(): TrackState[] {
     return [...this.#states.values()]
   }
+}
+
+function addPathPoint(state: TrackState, obs: Observation, at: number): void {
+  const last = state.path.at(-1)
+  if (last?.place === obs.name) return
+  state.path.push({ lat: obs.point.lat, lon: obs.point.lon, at, place: obs.name })
+  if (state.path.length > 60) state.path.shift()
+}
+
+/** Cruise speed from the named model's published figures, else the type default. */
+function cruiseKmh(type: ThreatType, model: string | null | undefined): number {
+  const spec = model ? weaponSpec(model) : null
+  return spec && spec.type === type ? spec.cruiseKmh : THREAT_PROFILES[type].speedKmh
+}
+
+function maxKmh(type: ThreatType, model: string | null | undefined): number {
+  const spec = model ? weaponSpec(model) : null
+  return spec && spec.type === type ? spec.maxKmh : THREAT_PROFILES[type].maxSpeedKmh
 }
 
 function toTarget(place: Place | null): NamedPoint | null {

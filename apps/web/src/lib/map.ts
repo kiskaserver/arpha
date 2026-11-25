@@ -6,6 +6,7 @@ import {
   THREAT_TYPES,
   type Track,
   ZAPORIZHZHIA,
+  ZP_CITY_FEATURE_ID,
 } from '@arpha/shared'
 import type { ExpressionSpecification, GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import { buildFrame, circlePolygon, type Feature, fc, frameInterval, MIN_FRAME_MS } from './frame'
@@ -40,9 +41,13 @@ export class MapController {
   #selected: string | null = null
   /** featureId → alert_type. */
   #alerted = new Map<string, string>()
+  /** Area alerts are on but the city itself is not under alert. */
+  #cityClear = false
   #points: MapPoint[] = []
   #radiusKm = 15
   #infra: InfraStatus[] = []
+  #me: (LatLon & { accuracy: number }) | null = null
+  #routes: { fromLat: number; fromLon: number; toLat: number; toLon: number; count: number }[] = []
   #hotspots: Hotspot[] | null = null
   #lingerMin = 2
   #picking = false
@@ -106,6 +111,8 @@ export class MapController {
         this.#applyPoints()
         this.#applyInfra()
         this.#applyHotspots()
+        this.#applyMe()
+        this.#applyRoutes()
         this.invalidate()
       })
     })
@@ -165,6 +172,7 @@ export class MapController {
     map.addSource('boundaries', { type: 'geojson', data: '/boundaries.geojson', promoteId: 'id' })
     for (const id of [
       'observer',
+      'routes',
       'hotspots',
       'cones',
       'impacts',
@@ -173,6 +181,7 @@ export class MapController {
       'uncertainty',
       'predicted',
       'infra',
+      'me',
       'threats',
     ]) {
       map.addSource(id, { type: 'geojson', data: empty })
@@ -217,6 +226,44 @@ export class MapController {
       source: 'boundaries',
       filter: ['==', ['get', 'kind'], 'oblast'],
       paint: { 'line-color': ['case', alerted, alertColor, '#f5a524'], 'line-width': 2 },
+    })
+    // Zaporizhzhia is announced separately from its raion: show it clearly.
+    const cityFilter: ExpressionSpecification = ['==', ['get', 'id'], ZP_CITY_FEATURE_ID]
+    const cityClear: ExpressionSpecification = ['to-boolean', ['feature-state', 'cityClear']]
+    map.addLayer({
+      id: 'city-clear',
+      type: 'fill',
+      source: 'boundaries',
+      filter: cityFilter,
+      paint: { 'fill-color': '#30d158', 'fill-opacity': ['case', cityClear, 0.22, 0] },
+    })
+    map.addLayer({
+      id: 'city-line',
+      type: 'line',
+      source: 'boundaries',
+      filter: cityFilter,
+      paint: {
+        'line-color': [
+          'case',
+          cityClear,
+          '#30d158',
+          alerted,
+          alertColor,
+          this.#dark ? '#c7d2e3' : '#475569',
+        ],
+        'line-width': ['case', cityClear, 3, 2],
+      },
+    })
+    map.addLayer({
+      id: 'routes',
+      type: 'line',
+      source: 'routes',
+      layout: { 'line-cap': 'round' },
+      paint: {
+        'line-color': '#bf5af2',
+        'line-width': ['interpolate', ['linear'], ['get', 'count'], 1, 1.5, 20, 7],
+        'line-opacity': 0.55,
+      },
     })
     map.addLayer({
       id: 'hotspots',
@@ -350,6 +397,32 @@ export class MapController {
       paint: { 'text-color': '#0a84ff', 'text-halo-color': '#fff', 'text-halo-width': 2 },
     })
     map.addLayer({
+      id: 'me-accuracy',
+      type: 'fill',
+      source: 'me',
+      filter: ['==', ['get', 'kind'], 'accuracy'],
+      paint: { 'fill-color': '#0a84ff', 'fill-opacity': 0.12 },
+    })
+    map.addLayer({
+      id: 'me-halo',
+      type: 'circle',
+      source: 'me',
+      filter: ['==', ['get', 'kind'], 'me'],
+      paint: { 'circle-radius': 16, 'circle-color': '#0a84ff', 'circle-opacity': 0.25 },
+    })
+    map.addLayer({
+      id: 'me-dot',
+      type: 'circle',
+      source: 'me',
+      filter: ['==', ['get', 'kind'], 'me'],
+      paint: {
+        'circle-radius': 8,
+        'circle-color': '#0a84ff',
+        'circle-stroke-color': '#fff',
+        'circle-stroke-width': 3,
+      },
+    })
+    map.addLayer({
       id: 'infra',
       type: 'symbol',
       source: 'infra',
@@ -424,8 +497,9 @@ export class MapController {
   }
 
   /** featureId → alert_type. */
-  setAlerts(alerted: Map<string, string>): void {
+  setAlerts(alerted: Map<string, string>, cityClear = false): void {
     this.#alerted = alerted
+    this.#cityClear = cityClear
     this.#applyAlerts()
   }
 
@@ -436,6 +510,10 @@ export class MapController {
       for (const [id, type] of this.#alerted) {
         this.#map.setFeatureState({ source: 'boundaries', id }, { alert: type })
       }
+      this.#map.setFeatureState(
+        { source: 'boundaries', id: ZP_CITY_FEATURE_ID },
+        { cityClear: this.#cityClear },
+      )
     }
     if (this.#map.isSourceLoaded('boundaries')) apply()
     else this.#map.once('sourcedata', () => this.#applyAlerts())
@@ -496,6 +574,56 @@ export class MapController {
       properties: { count: h.count },
     }))
     ;(this.#map.getSource('hotspots') as GeoJSONSource).setData(fc(features))
+  }
+
+  /** The user's live GPS position (null when not shared). */
+  setMe(me: (LatLon & { accuracy: number }) | null): void {
+    this.#me = me
+    this.#applyMe()
+  }
+
+  #applyMe(): void {
+    if (!this.#ready) return
+    const me = this.#me
+    const features: Feature[] = me
+      ? [
+          {
+            type: 'Feature',
+            geometry: circlePolygon(me, Math.min(Math.max(me.accuracy / 1000, 0.02), 5), 32),
+            properties: { kind: 'accuracy' },
+          },
+          {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [me.lon, me.lat] },
+            properties: { kind: 'me' },
+          },
+        ]
+      : []
+    ;(this.#map.getSource('me') as GeoJSONSource).setData(fc(features))
+  }
+
+  /** Learned corridors (empty array hides them). */
+  setRoutes(
+    routes: { fromLat: number; fromLon: number; toLat: number; toLon: number; count: number }[],
+  ): void {
+    this.#routes = routes
+    this.#applyRoutes()
+  }
+
+  #applyRoutes(): void {
+    if (!this.#ready) return
+    const features: Feature[] = this.#routes.map((r) => ({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [r.fromLon, r.fromLat],
+          [r.toLon, r.toLat],
+        ],
+      },
+      properties: { count: r.count },
+    }))
+    ;(this.#map.getSource('routes') as GeoJSONSource).setData(fc(features))
   }
 
   setLinger(min: number): void {

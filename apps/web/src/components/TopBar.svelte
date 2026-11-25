@@ -13,8 +13,10 @@ interface Props {
   alerts: ActiveAlert[]
   status: ConnectionStatus
   demo: boolean
+  /** The oblast/raion is under alert but Zaporizhzhia city is not. */
+  cityClear?: boolean
 }
-let { level, alerts, status, demo }: Props = $props()
+let { level, alerts, status, demo, cityClear = false }: Props = $props()
 let open = $state(false)
 
 const label = $derived(
@@ -62,7 +64,8 @@ const connLabel = $derived(
   >
     <span class="pulse" aria-hidden="true"></span>
     <span class="text">{label}</span>
-    {#if summary}<span class="sub">{summary}</span>{/if}
+    {#if cityClear}<span class="city-ok" data-testid="city-clear">{uk.cityClear}</span>
+    {:else if summary}<span class="sub">{summary}</span>{/if}
     {#if alerts.length > 1}<span class="count">{alerts.length}</span>{/if}
   </button>
 
@@ -246,6 +249,15 @@ const connLabel = $derived(
     border-radius: 6px;
     background: color-mix(in srgb, var(--danger) 18%, transparent);
     color: var(--text);
+  }
+  .city-ok {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #30d158;
+    color: #04210f;
+    white-space: nowrap;
   }
   .sub {
     font-size: 12px;

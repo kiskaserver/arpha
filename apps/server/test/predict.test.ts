@@ -35,6 +35,7 @@ const track = (o: Partial<Track> = {}): Track => ({
   target: null,
   origin: null,
   prediction: null,
+  model: null,
   confidence: 0.8,
   sources: [],
   createdAt: NOW,
@@ -92,6 +93,24 @@ describe('Predictor', () => {
     const biased = new Predictor(places)
     biased.setPrior(new Map([[second.name, 500]]))
     expect(biased.predict(track(), NOW)!.targets[0]!.name).toBe(second.name)
+  })
+
+  it('learned routes steer the forecast even against the reported course', () => {
+    const learned = new Predictor(places)
+    // History: from Балабине drones usually turned west to Кушугум.
+    learned.setTransitions(
+      new Map([
+        [
+          'drones|Балабине',
+          new Map([
+            ['Кушугум', 9],
+            ['Запоріжжя', 1],
+          ]),
+        ],
+      ]),
+    )
+    const p = learned.predict(track({ headingDeg: 300 }), NOW)!
+    expect(p.targets[0]!.name).toBe('Кушугум')
   })
 
   it('KAB and ballistic: impact zone at the target/reported spot', () => {

@@ -33,6 +33,7 @@ export function message(overrides: Partial<RawMessage> = {}): RawMessage {
 export function event(overrides: Partial<ExtractedEvent> = {}): ExtractedEvent {
   return {
     type: 'shahed',
+    model: null,
     count: null,
     action: 'new',
     location: null,

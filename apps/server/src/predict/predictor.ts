@@ -4,10 +4,12 @@ import {
   type LatLon,
   type PredictedTarget,
   type Prediction,
+  THREAT_CLASS,
   THREAT_PROFILES,
   type Track,
 } from '@arpha/shared'
 import type { PlaceKind, PlaceRecord } from '../geo/gazetteer'
+import { nextProbabilities, type TransitionTable } from './patterns'
 
 /** How likely a kind of place is to be the intended target, all else equal. */
 const KIND_WEIGHT: Partial<Record<PlaceKind, number>> = {
@@ -33,12 +35,14 @@ const MAX_TARGETS = 3
  *              × place importance (city districts, bridges, plants)
  *              × historical prior (how often that place was reported/hit
  *                in the last 30 days — routes repeat, especially for KABs)
- *              × 3 if a source named it as the destination.
+ *              × 3 if a source named it as the destination
+ *              × (1 + 3·P(next = place | current place)) — learned routes.
  * Scores are normalised over the top candidates into probabilities.
  */
 export class Predictor {
   #candidates: Candidate[]
   #prior = new Map<string, number>()
+  #transitions: TransitionTable = new Map()
 
   constructor(places: PlaceRecord[]) {
     this.#candidates = places
@@ -49,6 +53,11 @@ export class Predictor {
         lon: p.lon,
         weight: (KIND_WEIGHT[p.k] ?? 1) * (1 + Math.log10((p.p ?? 0) + 1) / 6),
       }))
+  }
+
+  /** Learned place→place movement (see patterns.ts). */
+  setTransitions(table: TransitionTable): void {
+    this.#transitions = table
   }
 
   /** Counts of recent observations/impacts per place name. */
@@ -81,18 +90,24 @@ export class Predictor {
     }
 
     const reachKm = (track.speedKmh / 60) * profile.predictHorizonMin
+    // Where objects of this class went next from here in past attacks.
+    const learned = track.placeName
+      ? nextProbabilities(this.#transitions, THREAT_CLASS[track.type], track.placeName)
+      : new Map<string, number>()
     const sigma = Math.max(profile.coneHalfAngleDeg / 1.5, 8)
     const scored: (PredictedTarget & { score: number })[] = []
     for (const c of this.#candidates) {
       const d = haversineKm(track.position, c)
       if (d < 0.5 || d > reachKm * 1.15) continue
       const off = Math.abs(((bearingDeg(track.position, c) - track.headingDeg + 540) % 360) - 180)
-      if (off > profile.coneHalfAngleDeg * 1.5) continue
-      const course = Math.exp(-((off / sigma) ** 2))
+      const history = learned.get(c.name) ?? 0
+      if (off > profile.coneHalfAngleDeg * 1.5 && history < 0.2) continue
+      // A route that history says is common stays plausible even if the course says otherwise.
+      const course = Math.max(Math.exp(-((off / sigma) ** 2)), history > 0.2 ? 0.3 : 0)
       const reach = 1 - 0.6 * (d / (reachKm * 1.15))
       const prior = 1 + Math.log1p(this.#prior.get(c.name) ?? 0)
       const named = track.target?.name === c.name ? 3 : 1
-      const score = course * reach * c.weight * prior * named
+      const score = course * reach * c.weight * prior * named * (1 + 3 * history)
       const etaMin = off <= profile.coneHalfAngleDeg / 2 ? d / (track.speedKmh / 60) : null
       scored.push({ name: c.name, lat: c.lat, lon: c.lon, p: 0, etaMin, score })
     }

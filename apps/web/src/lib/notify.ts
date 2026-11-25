@@ -1,6 +1,7 @@
 import {
   type ActiveAlert,
   ALERT_TYPE_LABELS_UK,
+  alertCovers,
   computeApproach,
   formatMinutesUk,
   haversineKm,
@@ -66,9 +67,7 @@ export class Notifier {
   ): void {
     const prevById = new Map(prev.map((a) => [a.id, a]))
     const mine = (a: ActiveAlert) =>
-      myFeatureIds.length
-        ? a.featureIds.some((id) => myFeatureIds.includes(id))
-        : a.locationType === 'oblast'
+      myFeatureIds.length ? alertCovers(a, myFeatureIds) : a.locationType === 'oblast'
     for (const a of next) {
       if (!mine(a)) continue
       const before = prevById.get(a.id)

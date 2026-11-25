@@ -1,5 +1,5 @@
 <script lang="ts">
-import { type ActiveAlert, pointInGeometry, type Track } from '@arpha/shared'
+import { type ActiveAlert, cityUnderAlert, pointInGeometry } from '@arpha/shared'
 import { onMount } from 'svelte'
 import LegendSheet from './components/LegendSheet.svelte'
 import SettingsSheet from './components/SettingsSheet.svelte'
@@ -43,6 +43,10 @@ let mapState = $state<'loading' | 'ready' | 'failed'>('loading')
 let installPrompt = $state<(Event & { prompt(): Promise<void> }) | null>(null)
 let myFeatureIds = $state<string[]>([])
 let toast = $state<InAppAlert | null>(null)
+/** Live GPS position, only while the user shares it. */
+let me = $state<{ lat: number; lon: number; accuracy: number } | null>(null)
+let watchId: number | null = null
+let showRoutes = $state(false)
 let flashing = $state<SoundCategory | null>(null)
 let mapEl: HTMLDivElement
 let map: MapController | null = null
@@ -50,6 +54,11 @@ let boundaries: { features: { properties: { id: string }; geometry: Geometry }[]
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 
 const serverNow = () => Date.now() + live.clockOffset
+const applyAlertsToMap = () =>
+  map?.setAlerts(
+    alertedFeatures(live.alerts),
+    live.alerts.alerts.length > 0 && !cityUnderAlert(live.alerts.alerts),
+  )
 
 const notifier = new Notifier({
   sound: (c) => playSound(settings.sounds[c]),
@@ -66,10 +75,14 @@ const notifier = new Notifier({
   },
 })
 
+/** Places to protect: saved points, or the live GPS position when none are saved. */
+const watched = $derived(
+  settings.points.length ? settings.points : me ? [{ id: 'me', name: uk.meName, lat: me.lat, lon: me.lon }] : [],
+)
 const rows = $derived.by(() => {
   void version
   const visible = [...live.tracks.values()].filter((t) => isVisible(t, now, settings.lingerMin))
-  return threatRows(visible, settings.points[0] ?? null, now, settings.radiusKm)
+  return threatRows(visible, watched[0] ?? null, now, settings.radiusKm)
 })
 const alerts = $derived.by(() => {
   void version
@@ -84,6 +97,7 @@ const demo = $derived.by(() => {
   return live.demo
 })
 const level = $derived(alertLevel(alerts, myFeatureIds))
+const cityClear = $derived(alerts.alerts.length > 0 && !cityUnderAlert(alerts.alerts))
 
 function onStreamEvent(ev: Parameters<typeof applyEvent>[1]) {
   const prevAlerts: ActiveAlert[] = live.alerts.alerts
@@ -95,13 +109,13 @@ function onStreamEvent(ev: Parameters<typeof applyEvent>[1]) {
     for (const track of live.tracks.values()) motion.upsert(track, t)
   } else if (ev.type === 'track') {
     motion.upsert(ev.track, t)
-    notifier.track(ev.track, settings.points, settings, t)
+    notifier.track(ev.track, watched, settings, t)
   } else if (ev.type === 'track_removed') {
     motion.remove(ev.id)
     if (selected === ev.id) selected = null
   }
   if (ev.type === 'alerts' || initial) {
-    map?.setAlerts(alertedFeatures(live.alerts))
+    applyAlertsToMap()
     // The first snapshot is the current state, not news.
     if (!initial) notifier.alerts(prevAlerts, live.alerts.alerts, myFeatureIds, settings, t)
   }
@@ -133,7 +147,8 @@ function updateSettings(patch: Partial<Settings>) {
 
 /** Which polygons contain my points — decides "тривога у вашій громаді". */
 async function refreshMyAreas() {
-  if (!settings.points.length) {
+  const areas = settings.points.length ? settings.points : me ? [me] : []
+  if (!areas.length) {
     myFeatureIds = []
     return
   }
@@ -141,7 +156,7 @@ async function refreshMyAreas() {
     boundaries ??= await (await fetch('/boundaries.geojson')).json()
     const ids = new Set<string>()
     for (const f of boundaries!.features) {
-      if (settings.points.some((p) => pointInGeometry(p, f.geometry))) ids.add(f.properties.id)
+      if (areas.some((p) => pointInGeometry(p, f.geometry))) ids.add(f.properties.id)
     }
     myFeatureIds = [...ids]
   } catch {
@@ -181,6 +196,36 @@ function addByGps() {
       pushMessage = err.code === err.PERMISSION_DENIED ? uk.gpsDenied : uk.gpsFailed
     },
     { enableHighAccuracy: false, timeout: 15_000, maximumAge: 5 * 60_000 },
+  )
+}
+
+/** Follow the user's position (battery-friendly: network/coarse fixes are fine). */
+function watchMe(fly = false) {
+  if (!('geolocation' in navigator)) {
+    pushMessage = uk.gpsFailed
+    return
+  }
+  if (watchId !== null) {
+    if (fly && me) map?.flyTo(me, 12)
+    return
+  }
+  let first = true
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      me = { lat: pos.coords.latitude, lon: pos.coords.longitude, accuracy: pos.coords.accuracy }
+      map?.setMe(me)
+      if (first && fly) map?.flyTo(me, 12)
+      first = false
+      if (!settings.points.length) void refreshMyAreas()
+    },
+    (err) => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId)
+      watchId = null
+      me = null
+      map?.setMe(null)
+      pushMessage = err.code === err.PERMISSION_DENIED ? uk.gpsDenied : uk.gpsFailed
+    },
+    { enableHighAccuracy: false, maximumAge: 30_000, timeout: 30_000 },
   )
 }
 
@@ -244,6 +289,14 @@ function selectFromToast() {
 onMount(() => {
   applyTheme(settings.theme)
   void refreshMyAreas()
+  // If location access was granted before, show "you are here" right away.
+  navigator.permissions
+    ?.query({ name: 'geolocation' })
+    .then((st) => {
+      if (st.state === 'granted') watchMe()
+      st.onchange = () => (st.state === 'granted' ? watchMe() : null)
+    })
+    .catch(() => {})
   // Browsers only allow sound after a user gesture.
   addEventListener('pointerdown', unlockAudio, { once: true })
 
@@ -288,10 +341,11 @@ onMount(() => {
       if (destroyed) return ctl.destroy()
       map = ctl
       map.bind(() => live.tracks.values(), motion)
-      map.setAlerts(alertedFeatures(live.alerts))
+      applyAlertsToMap()
       map.setPoints(settings.points, settings.radiusKm)
       map.setInfra(live.infra)
       map.setLinger(settings.lingerMin)
+      map.setMe(me)
       // The user may have started picking a point before the map finished loading.
       map.setPicking(picking)
       void refreshHotspots()
@@ -309,15 +363,12 @@ onMount(() => {
     document.removeEventListener('visibilitychange', onVisible)
     media.removeEventListener('change', onScheme)
     removeEventListener('beforeinstallprompt', onInstall)
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId)
     map?.destroy()
   }
 })
 
-const homeOrRegion = () => {
-  const p = settings.points[0]
-  if (p) map?.flyTo(p, 11)
-  else addByGps()
-}
+const locate = () => watchMe(true)
 </script>
 
 <main class="app" class:picking>
@@ -331,7 +382,7 @@ const homeOrRegion = () => {
     <div class="flash {flashing}" aria-hidden="true"></div>
   {/if}
 
-  <TopBar {level} alerts={alerts.alerts} {status} {demo} />
+  <TopBar {level} alerts={alerts.alerts} {status} {demo} {cityClear} />
 
   {#if toast}
     <div class="toast-wrap" role="alert">
@@ -362,7 +413,16 @@ const homeOrRegion = () => {
         ><path fill="currentColor" d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" /></svg
       >
     </button>
-    <button type="button" class="fab" onclick={homeOrRegion} aria-label={uk.locateMe}>
+    <button
+      type="button"
+      class="fab"
+      class:active={me !== null}
+      aria-pressed={me !== null}
+      onclick={locate}
+      aria-label={me ? uk.locateOn : uk.locateMe}
+      title={me ? uk.locateOn : uk.locateMe}
+      data-testid="locate"
+    >
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"
         ><path fill="currentColor" d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.1A7 7 0 0 0 13 5.1V3h-2v2.1A7 7 0 0 0 5.1 11H3v2h2.1a7 7 0 0 0 5.9 5.9V21h2v-2.1a7 7 0 0 0 5.9-5.9H21z" /></svg
       >
@@ -374,7 +434,18 @@ const homeOrRegion = () => {
     </button>
   </div>
 
-  <ThreatPanel {rows} {feed} {selected} {now} onselect={select} />
+  <ThreatPanel
+    {rows}
+    {feed}
+    {selected}
+    {now}
+    {showRoutes}
+    onselect={select}
+    ontoggleroutes={(corridors) => {
+      showRoutes = corridors !== null
+      map?.setRoutes(corridors ?? [])
+    }}
+  />
 
   {#if showSettings}
     <SettingsSheet
@@ -483,6 +554,10 @@ const homeOrRegion = () => {
     color: var(--text);
     box-shadow: var(--shadow);
     cursor: pointer;
+  }
+  .fab.active {
+    background: #0a84ff;
+    color: #fff;
   }
   .pick-hint {
     position: absolute;

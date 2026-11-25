@@ -150,6 +150,7 @@ export class DemoSimulator {
   #apply(step: DemoStep, now: number): void {
     const ev: ExtractedEvent = {
       type: 'shahed',
+      model: null,
       count: null,
       action: 'new',
       location: null,

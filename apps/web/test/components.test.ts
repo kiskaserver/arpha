@@ -21,6 +21,7 @@ const track = (o: Partial<Track> = {}): Track => ({
   target: { name: 'Запоріжжя', ...ZAPORIZHZHIA },
   origin: null,
   prediction: null,
+  model: null,
   confidence: 0.8,
   sources: [
     {
@@ -52,7 +53,7 @@ describe('TopBar', () => {
   it('shows an active alert and lists locations on tap', async () => {
     render(TopBar, { level: 'region', alerts: [alert], status: 'online', demo: true })
     const chip = screen.getByTestId('alert-chip')
-    expect(chip.textContent).toContain('Повітряна тривога')
+    expect(chip.textContent).toContain('Тривога в області')
     expect(screen.getByText('Демо')).toBeTruthy()
     await fireEvent.click(chip)
     const list = screen.getByRole('list', { name: 'Тривоги в області' })
@@ -60,6 +61,17 @@ describe('TopBar', () => {
     expect(list.textContent).toContain('червоний рівень')
     expect(list.textContent).toContain('КАБи')
     expect(chip.textContent).toContain('КАБи')
+  })
+
+  it('says when the city itself is calm while the area is under alert', () => {
+    render(TopBar, {
+      level: 'region',
+      alerts: [alert],
+      status: 'online',
+      demo: false,
+      cityClear: true,
+    })
+    expect(screen.getByTestId('city-clear').textContent).toBe('У місті тривоги немає')
   })
 
   it('shows calm and offline states', () => {
@@ -88,7 +100,15 @@ describe('ThreatPanel', () => {
       NOW,
       10,
     )
-    render(ThreatPanel, { rows, feed: [], selected: null, now: NOW, onselect })
+    render(ThreatPanel, {
+      rows,
+      feed: [],
+      selected: null,
+      now: NOW,
+      onselect,
+      showRoutes: false,
+      ontoggleroutes: vi.fn(),
+    })
     expect(screen.getByTestId('threat-count').textContent).toContain('1 загроза')
     const items = screen.getAllByTestId('threat-row')
     expect(items).toHaveLength(2)
@@ -100,13 +120,29 @@ describe('ThreatPanel', () => {
   })
 
   it('empty state', () => {
-    render(ThreatPanel, { rows: [], feed: [], selected: null, now: NOW, onselect: vi.fn() })
+    render(ThreatPanel, {
+      rows: [],
+      feed: [],
+      selected: null,
+      now: NOW,
+      onselect: vi.fn(),
+      showRoutes: false,
+      ontoggleroutes: vi.fn(),
+    })
     expect(screen.getAllByText('Активних загроз не зафіксовано').length).toBeGreaterThan(0)
   })
 
   it('shows the card for the selected threat', () => {
     const rows = threatRows([track()], ZAPORIZHZHIA, NOW, 10)
-    render(ThreatPanel, { rows, feed: [], selected: 't1', now: NOW, onselect: vi.fn() })
+    render(ThreatPanel, {
+      rows,
+      feed: [],
+      selected: 't1',
+      now: NOW,
+      onselect: vi.fn(),
+      showRoutes: false,
+      ontoggleroutes: vi.fn(),
+    })
     expect(screen.getByTestId('threat-card')).toBeTruthy()
   })
 })

@@ -206,6 +206,41 @@ describe('runtime', () => {
     expect(ingest.stop).toHaveBeenCalled()
   })
 
+  it('imports channel history once to seed routes, without touching the live map', async () => {
+    const ingest = new FakeIngest()
+    const history = [
+      message({ id: 1, text: 'шахед Василівка', date: min(-300) }),
+      message({ id: 2, text: 'Балабине', replyToId: 1, date: min(-290) }),
+    ]
+    ;(ingest as Ingest).history = async () => history
+    const extractor: Extractor = {
+      extract: async (i) => ({
+        relevant: true,
+        all_clear: false,
+        closures: [],
+        events: [
+          event({
+            location: i.message.id === 1 ? 'Василівка' : 'Балабине',
+            action: i.message.id === 1 ? 'new' : 'update',
+          }),
+        ],
+      }),
+    }
+    const rt = buildRuntime(cfg({ HISTORY_IMPORT_HOURS: '6' }), silentLogger, {
+      ingest,
+      extractor,
+      now: () => min(0),
+    })
+    runtimes.push(rt)
+    expect(await rt.importHistory(6)).toBe(2)
+    expect(rt.store.routes(0)[0]!.path.map((p) => p.place)).toEqual(['Василівка', 'Балабине'])
+    expect(rt.tracker.active()).toHaveLength(0)
+    const patterns = await json(rt.app.request('/api/patterns?days=7'))
+    expect(patterns.corridors[0]).toMatchObject({ from: 'Василівка', to: 'Балабине' })
+    // Runs only once per volume.
+    expect(await rt.importHistory(6)).toBe(0)
+  })
+
   it('without an extractor key, ingestion is not wired', () => {
     const rt = buildRuntime(cfg(), silentLogger, { ingest: new FakeIngest() })
     runtimes.push(rt)
