@@ -151,7 +151,29 @@ CLOSURES: "мости/греблю/ГЕС перекрито" → closures [{obj
 IRRELEVANT (relevant=false, events=[]): ads, donations, "підписатися", power-outage schedules, casualty statistics and news hours after the fact, official summaries of past nights, other regions, a bare "ВОЗДУШНАЯ ТРЕВОГА" with no threat type.
 NOT irrelevant: "загроза балістики", "ракетна небезпека", "швидкісна ціль" for a place — that is a ballistic event toward that place (city name → "Запоріжжя").
 
-Confidence: 0.9 explicit and specific, 0.6 vague, 0.3 speculative ("можливо", "ймовірно").`
+Confidence: 0.9 explicit and specific, 0.6 vague, 0.3 speculative ("можливо", "ймовірно").
+
+EXAMPLES (post → report; fields not shown are null, count 1, action new, confidence 0.9):
+1. "2 мопеди від Пологів курсом на Оріхів" → events [{type:shahed, count:2, from:"Пологи", toward:"Оріхів"}]
+2. Reply to a post linked to track t1 ("Шахед на Комишуваху"): "Комишуваха, далі на Новоолександрівку"
+   → [{type:shahed, action:update, location:"Комишуваха", toward:"Новоолександрівка", track_id:"t1"}]
+3. "Реактив над Хортицею, курс північ" → [{type:jet_drone, model:"geran_3", location:"Хортиця", heading:"N"}]
+4. "1 шахед на Кушугум, ще 2 — на Балабине" → two groups:
+   [{type:shahed, toward:"Кушугум"}, {type:shahed, count:2, toward:"Балабине"}]
+5. "Пуски КАБ по Гуляйполю 💣" → [{type:kab, model:"umpk_fab500", location:"Гуляйполе"}] (launches "на/по X" = the strike area)
+6. "Кабовози активні на південному напрямку" → [{type:aircraft, confidence:0.6}]
+7. Reply to track t2 ("Молнія на Степове"): "Збили над Степовим 🔥" → [{type:molniya, action:destroyed, location:"Степове", track_id:"t2"}]
+8. Reply to track t3: "Зник з радарів" → [{type:<t3's type>, action:lost, track_id:"t3"}]
+9. "Швидкісна ціль з Бердянська на Запоріжжя!" → [{type:ballistic, from:"Бердянськ", toward:"Запоріжжя"}]
+10. "Х-59 з Азовського моря курсом на Запоріжжя" → [{type:cruise_missile, model:"kh_59", from:"Азовське море", toward:"Запоріжжя"}]
+11. "Орлан кружляє над Степногірськом" → [{type:recon_drone, model:"orlan_10", location:"Степногірськ"}]
+12. "Град по Приморському 🚀" → [{type:mlrs, toward:"Приморське"}]
+13. "Приліт у Вільнянську, без деталей" → [{type:explosion, location:"Вільнянськ"}]
+14. "ФПВшка в районі Матвіївки, можливо на Вільнянськ" → [{type:fpv, location:"Матвіївка", precision:near, toward:"Вільнянськ", confidence:0.3}]
+15. "Над Шевчиком і Бородком по одному мопеду" → [{type:shahed, location:"Шевченківський район"}, {type:shahed, location:"Бородинський"}]
+16. "Відбій. Локаційно чисто 🟢" → relevant:true, all_clear:true, events []
+17. "Світло з 18:00 по 22:00, черга 3.1" → relevant:false, events []
+18. "Ранкове зведення: за добу 12 обстрілів по області" → relevant:false (a past summary), events []`
 
 function formatAge(ms: number, now: number): string {
   const min = Math.max(0, Math.round((now - ms) / 60_000))

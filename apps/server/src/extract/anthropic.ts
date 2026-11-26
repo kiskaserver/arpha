@@ -8,6 +8,7 @@ import {
   type Extractor,
   extractionSchema,
 } from './types'
+import type { UsageMeter } from './usage'
 
 /** The subset of the SDK we use — lets tests inject a fake. */
 export interface MessagesClient {
@@ -21,30 +22,52 @@ export interface AnthropicExtractorOptions {
   apiKey?: string
   model: string
   logger: Logger
+  /** Meters spend and enforces the daily cap; absent in tooling (eval). */
+  meter?: UsageMeter
 }
 
 export class AnthropicExtractor implements Extractor {
   readonly #client: MessagesClient
   readonly #model: string
   readonly #log: Logger
+  readonly #meter: UsageMeter | undefined
+  #pausedDay: string | null = null
 
   constructor(opts: AnthropicExtractorOptions) {
     this.#client =
       opts.client ?? new Anthropic({ apiKey: opts.apiKey, maxRetries: 3, timeout: 30_000 })
     this.#model = opts.model
     this.#log = opts.logger
+    this.#meter = opts.meter
   }
 
   async extract(input: ExtractionInput): Promise<Extraction> {
+    const meter = this.#meter
+    if (meter?.exhausted) {
+      const { day, usd, calls } = meter.today
+      if (this.#pausedDay !== day) {
+        this.#pausedDay = day
+        this.#log.warn(
+          { usd, calls, budgetUsd: meter.budgetUsd },
+          'LLM daily budget reached — parsing paused until midnight (Kyiv)',
+        )
+      }
+      return EMPTY_EXTRACTION
+    }
     const started = Date.now()
     const res = await this.#client.messages.create({
       model: this.#model,
       max_tokens: 1024,
-      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+      // Tools + system ≈ 5k tokens, above Haiku's 4096-token cache minimum. A 1 h TTL
+      // survives quiet nights; a cached read costs a tenth of a fresh input token.
+      system: [
+        { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral', ttl: '1h' } },
+      ],
       tools: [REPORT_TOOL as Anthropic.Tool],
       tool_choice: { type: 'tool', name: TOOL_NAME },
       messages: [{ role: 'user', content: buildUserPrompt(input) }],
     })
+    meter?.record(res.usage)
 
     const block = res.content.find(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === TOOL_NAME,

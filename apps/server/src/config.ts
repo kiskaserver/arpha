@@ -60,6 +60,8 @@ const envSchema = z.object({
 
   ANTHROPIC_API_KEY: optionalString,
   ANTHROPIC_MODEL: z.string().default('claude-haiku-4-5'),
+  /** Hard daily cap on LLM spend (USD, Kyiv day); parsing pauses until midnight. 0 = no cap. */
+  LLM_DAILY_BUDGET_USD: z.coerce.number().min(0).default(3),
   EXTRACT_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(4),
 
   ALERTS_IN_UA_TOKEN: optionalString,

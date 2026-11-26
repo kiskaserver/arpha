@@ -9,6 +9,7 @@ import { Store } from './db'
 import { DemoSimulator } from './demo/simulator'
 import { AnthropicExtractor } from './extract/anthropic'
 import type { Extractor, RawMessage } from './extract/types'
+import { UsageMeter } from './extract/usage'
 import { Tracker, type TrackState } from './fusion/tracker'
 import { Gazetteer, type PlaceRecord } from './geo/gazetteer'
 import { createApp } from './http/app'
@@ -131,6 +132,12 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
     },
   })
 
+  const meter = new UsageMeter({
+    model: config.ANTHROPIC_MODEL,
+    budgetUsd: config.LLM_DAILY_BUDGET_USD,
+    store,
+    now,
+  })
   const extractor =
     o.extractor ??
     (config.ANTHROPIC_API_KEY
@@ -138,6 +145,7 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
           apiKey: config.ANTHROPIC_API_KEY,
           model: config.ANTHROPIC_MODEL,
           logger,
+          meter,
         })
       : null)
 
@@ -212,6 +220,7 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
       alerts: alerts.enabled ? (alerts.state.stale ? 'stale' : 'ok') : 'disabled',
       tracks: tracker.active().length,
       pipeline: pipeline?.stats ?? null,
+      llm: { today: meter.today, budgetUsd: meter.budgetUsd, paused: meter.exhausted },
       pushSubscribers: push?.size ?? 0,
       gazetteer: gazetteer.size,
       boundaries: boundaries.features.length,
@@ -325,6 +334,12 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
     async start() {
       refreshPrior()
       timers.push(setInterval(refreshPrior, 10 * 60_000))
+      timers.push(
+        setInterval(() => {
+          const t = meter.today
+          if (t.calls) logger.info({ ...t, budgetUsd: meter.budgetUsd }, 'llm usage today')
+        }, 3_600_000),
+      )
       timers.push(setInterval(() => tracker.tick(now()), 5_000))
       timers.push(setInterval(() => infra.tick(now()), 60_000))
       timers.push(setInterval(() => store.pruneObservations(now() - 60 * DAY_MS), 6 * 3_600_000))

@@ -76,7 +76,14 @@ describe('AnthropicExtractor', () => {
     expect(params.tool_choice).toEqual({ type: 'tool', name: TOOL_NAME })
     expect((params.system as Anthropic.TextBlockParam[])[0]!.cache_control).toEqual({
       type: 'ephemeral',
+      ttl: '1h',
     })
+  })
+
+  it('keeps the cached prefix above the 4096-token cache minimum', () => {
+    // Below it the API silently skips caching and every call pays ~3× more
+    // (measured: 8.7k chars ≈ 4.3k tokens was not cached, 10.8k ≈ 4.8k is).
+    expect(SYSTEM_PROMPT.length + JSON.stringify(REPORT_TOOL).length).toBeGreaterThan(10_000)
   })
 
   it('returns an empty extraction when the model does not call the tool', async () => {
