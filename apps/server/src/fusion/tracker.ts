@@ -4,6 +4,7 @@ import {
   compassToBearing,
   destination,
   haversineKm,
+  inBbox,
   kmToTarget,
   type LatLon,
   localFrame,
@@ -89,6 +90,8 @@ const SPEED_CAP_FACTOR = 1.2
 const MERGE_KM = 6
 const MERGE_HEADING_DEG = 60
 const MERGE_RECENT_MS = 4 * 60_000
+/** An origin this precise (a village, not an oblast or a sea) can stand in for a position. */
+const MAX_ORIGIN_AS_POSITION_KM = 5
 /** Weapons whose "lost"/"впали" means they hit the ground. */
 const IMPACTING = new Set<ThreatType>(['kab', 'ballistic', 'cruise_missile', 'mlrs', 'artillery'])
 const frame = localFrame(ZAPORIZHZHIA)
@@ -248,6 +251,11 @@ export class Tracker {
       const ttl = THREAT_PROFILES[s.track.type].ttlMin * 60_000
       if (s.track.status === 'active' && now - s.lastObsAt > ttl) this.#setStatus(s, 'lost', now)
     }
+    // Two channels' tracks often converge between reports (both dead-reckon to the same
+    // named target), so look for duplicates on the clock too, not only on updates.
+    for (const id of [...this.#states.keys()]) {
+      if (this.#states.has(id)) this.#mergeDuplicates(id, now)
+    }
   }
 
   #applyOne(raw: ResolvedEvent, ctx: ApplyContext, used: Set<string>): string | null {
@@ -297,8 +305,11 @@ export class Tracker {
   }
 
   #observation(ev: ResolvedEvent): Observation | null {
-    // A ballistic "з Криму" is a direction of origin, never a position.
-    const place = ev.locationPlace ?? (ev.type === 'ballistic' ? null : ev.fromPlace)
+    // "Від Пологів на Оріхів" puts a drone near Пологи; but "з Дніпропетровщини" or a
+    // ballistic "з Криму" is a direction of origin, never a position.
+    const local = (p: Place | null) =>
+      p && p.precisionKm <= MAX_ORIGIN_AS_POSITION_KM && inBbox(p) ? p : null
+    const place = ev.locationPlace ?? (ev.type === 'ballistic' ? null : local(ev.fromPlace))
     if (!place) return null
     const precision = ev.locationPlace ? ev.precision : 'near'
     return {
@@ -455,8 +466,12 @@ export class Tracker {
         let kf = kfPredict(state.kf, dt, profile.processNoise)
         const { state: updated, d2 } = kfUpdatePosition(kf, frame.toXY(obs.point), obs.sigma)
         if (d2 > 16 && haversineKm(state.track.position ?? obs.point, obs.point) > 40) {
-          // Wildly inconsistent: the object (or our association) jumped. Re-seed from the report.
-          const course = this.#courseHint(ev, obs.point)
+          // Wildly inconsistent: the object (or our association) jumped. Re-seed from the report,
+          // keeping the direction it evidently moved in when the post gives none.
+          const last = state.path.at(-1)
+          const course =
+            this.#courseHint(ev, obs.point) ??
+            (last && haversineKm(last, obs.point) > 3 ? bearingDeg(last, obs.point) : null)
           const vel = course === null ? { x: 0, y: 0 } : velocityFrom(course, speed)
           kf = kfInit(frame.toXY(obs.point), obs.sigma, vel, speed / 60)
         } else {

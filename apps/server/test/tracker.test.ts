@@ -389,4 +389,67 @@ describe('Tracker', () => {
     )
     expect(tracker.get(id!)!.trail!.map((p) => p.name)).toEqual(['Василівка', 'Балабине'])
   })
+
+  it('merges duplicates that converge between reports, on the clock', () => {
+    const onMerge = vi.fn()
+    const tracker = new Tracker({ onMerge })
+    const on = (channel: string, id: number, at: number, parentTrackIds: string[] = []) => ({
+      message: message({ id, channel, date: min(at) }),
+      parentTrackIds,
+      observedAt: min(at),
+    })
+    const [a] = tracker.apply(
+      [resolved({ type: 'jet_drone', location: 'Вільнянськ', toward: 'Аеропорт Запоріжжя' })],
+      on('a', 1, 0),
+    )
+    // Channel b: its own thread, first without a position, then 7 km from a's object
+    // (too far to merge on the update) — both flying to the airport (a unique name).
+    const [b] = tracker.apply(
+      [resolved({ type: 'jet_drone', action: 'new', toward: 'Аеропорт Запоріжжя' })],
+      on('b', 1, 0),
+    )
+    tracker.apply(
+      [
+        resolved({
+          type: 'jet_drone',
+          action: 'update',
+          location: 'Новософіївка',
+          toward: 'Аеропорт Запоріжжя',
+        }),
+      ],
+      on('b', 2, 0.1, [b!]),
+    )
+    expect(tracker.active()).toHaveLength(2)
+    // Dead reckoning parks both at the airport; the clock notices they are one object.
+    tracker.tick(min(3))
+    expect(onMerge).toHaveBeenCalledWith(b, a)
+    expect(tracker.active()).toHaveLength(1)
+  })
+
+  it('after a jump it keeps flying the way it evidently went', () => {
+    const { tracker } = setup()
+    const [id] = tracker.apply([resolved({ type: 'shahed', location: 'Оріхів' })], ctx(0))
+    // 60+ km north in a few minutes: inconsistent, so the filter is re-seeded…
+    tracker.apply(
+      [resolved({ type: 'shahed', action: 'update', location: 'Запоріжжя' })],
+      ctx(3, { parentTrackIds: [id!] }),
+    )
+    const t = tracker.get(id!)!
+    expect(t.placeName).toBe('Запоріжжя')
+    // …with the Оріхів → Запоріжжя direction (roughly north), not standing still.
+    expect(t.headingDeg).not.toBeNull()
+    expect(Math.abs(((t.headingDeg! - 340 + 540) % 360) - 180)).toBeLessThan(40)
+  })
+
+  it('an oblast-sized origin is a direction, not a position', () => {
+    const { tracker } = setup()
+    const [id] = tracker.apply(
+      [resolved({ type: 'jet_drone', from: 'Дніпропетровська область', toward: 'Вільнянськ' })],
+      ctx(0),
+    )
+    const t = tracker.get(id!)!
+    expect(t.position).toBeNull()
+    expect(t.origin?.name).toBe('Дніпропетровська область')
+    expect(t.trail ?? []).toEqual([])
+  })
 })
