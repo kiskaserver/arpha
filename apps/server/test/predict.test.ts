@@ -109,8 +109,13 @@ describe('Predictor', () => {
         ],
       ]),
     )
-    const p = learned.predict(track({ headingDeg: 300 }), NOW)!
-    expect(p.targets[0]!.name).toBe('Кушугум')
+    // Кушугум lies 206° from Балабине, 34° off this course: history decides…
+    const course = track({ headingDeg: 240 })
+    expect(new Predictor(places).predict(course, NOW)!.targets[0]!.name).not.toBe('Кушугум')
+    expect(learned.predict(course, NOW)!.targets[0]!.name).toBe('Кушугум')
+    // …but a place behind the object is never where it is going, whatever history says.
+    const behind = learned.predict(track({ headingDeg: 30 }), NOW)!
+    expect(behind.targets.map((t) => t.name)).not.toContain('Кушугум')
   })
 
   it('KAB and ballistic: impact zone at the target/reported spot', () => {
@@ -224,5 +229,12 @@ describe('InfraService and feed', () => {
     store.setJson('k', { a: 1 })
     expect(store.getJson('k')).toEqual({ a: 1 })
     expect(store.getJson('missing')).toBeNull()
+  })
+
+  it('folds candidates that are one spot on the map into the likelier name', () => {
+    const p = new Predictor(places).predict(track(), NOW)!
+    for (let i = 0; i < p.targets.length; i++)
+      for (let j = i + 1; j < p.targets.length; j++)
+        expect(haversineKm(p.targets[i]!, p.targets[j]!)).toBeGreaterThanOrEqual(3)
   })
 })

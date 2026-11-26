@@ -1,4 +1,4 @@
-import { haversineKm, predictPosition, type Track, ZAPORIZHZHIA } from '@arpha/shared'
+import { bearingDeg, haversineKm, predictPosition, type Track, ZAPORIZHZHIA } from '@arpha/shared'
 import { describe, expect, it, vi } from 'vitest'
 import { Tracker } from '../src/fusion/tracker'
 import { gazetteer, message, min, resolved, T0 } from './helpers'
@@ -287,5 +287,106 @@ describe('Tracker', () => {
     expect(t.headingDeg! > 300 || t.headingDeg! < 60).toBe(true)
     expect(haversineKm(predictPosition(t, min(24))!, ZAPORIZHZHIA)).toBeLessThan(30)
     expect(t.createdAt).toBe(T0)
+  })
+
+  it('"Довернув на X" without a position turns the course toward X', () => {
+    const { tracker } = setup()
+    const [id] = tracker.apply([resolved({ location: 'Василівка', heading: 'N' })], ctx(0))
+    expect(tracker.get(id!)!.headingDeg! < 30 || tracker.get(id!)!.headingDeg! > 330).toBe(true)
+    // Turn west, toward Дніпрорудне.
+    tracker.apply(
+      [resolved({ action: 'update', toward: 'Дніпрорудне' })],
+      ctx(1, { parentTrackIds: [id!] }),
+    )
+    const t = tracker.get(id!)!
+    expect(t.target?.name).toBe('Дніпрорудне')
+    const off = ((bearingDeg(t.position!, t.target!) - t.headingDeg! + 540) % 360) - 180
+    expect(Math.abs(off)).toBeLessThan(30)
+    expect(t.stateAt).toBe(min(1))
+  })
+
+  it('caps speeds that lagging reports imply', () => {
+    const { tracker } = setup()
+    const [id] = tracker.apply(
+      [resolved({ type: 'shahed', location: 'Василівка', heading: 'N' })],
+      ctx(0),
+    )
+    // 40 km in one minute would be 2400 km/h for a shahed.
+    tracker.apply(
+      [resolved({ type: 'shahed', action: 'update', location: 'Балабине' })],
+      ctx(1, { parentTrackIds: [id!] }),
+    )
+    expect(tracker.get(id!)!.speedKmh!).toBeLessThanOrEqual(180 * 1.2)
+  })
+
+  it("merges two channels' tracks of one object and resolves replies to the old id", () => {
+    const onMerge = vi.fn()
+    const tracker = new Tracker({ onMerge })
+    const on = (channel: string, id: number, at: number, parentTrackIds: string[] = []) => ({
+      message: message({ id, channel, date: min(at) }),
+      parentTrackIds,
+      observedAt: min(at),
+    })
+    // Channel a: a jet over Вільнянськ heading south.
+    const [a] = tracker.apply(
+      [resolved({ type: 'jet_drone', location: 'Вільнянськ', heading: 'S' })],
+      on('a', 1, 0),
+    )
+    // Channel b opens its own thread without a position ("з півночі до Новомиколаївки")…
+    const [b] = tracker.apply(
+      [resolved({ type: 'jet_drone', heading: 'S', toward: 'Новомиколаївка' })],
+      on('b', 1, 0.2),
+    )
+    expect(b).not.toBe(a)
+    // …then its next post puts it exactly where a's object now is.
+    const [c] = tracker.apply(
+      [
+        resolved({
+          type: 'jet_drone',
+          action: 'update',
+          location: 'Новософіївка',
+          heading: 'S',
+          altitude_m: 700,
+        }),
+      ],
+      on('b', 2, 1, [b!]),
+    )
+    expect(c).toBe(a)
+    expect(onMerge).toHaveBeenCalledWith(b, a)
+    expect(tracker.active()).toHaveLength(1)
+    expect(tracker.get(b!)!.id).toBe(a) // replies to b's posts still find the object
+    const t = tracker.get(a!)!
+    expect(new Set(t.sources.map((s) => s.channel))).toEqual(new Set(['a', 'b']))
+    expect(t.altitudeM).toBe(700)
+    expect(t.trail!.map((p) => p.name)).toEqual(['Вільнянськ', 'Новософіївка'])
+  })
+
+  it('an update with only a target joins the one object already heading there', () => {
+    const { tracker } = setup()
+    const [id] = tracker.apply(
+      [resolved({ type: 'jet_drone', location: 'Вільнянськ', toward: 'Матвіївка' })],
+      ctx(0),
+    )
+    const other = {
+      message: message({ id: 9, channel: 'other', date: min(1) }),
+      parentTrackIds: [],
+      observedAt: min(1),
+    }
+    const [same] = tracker.apply(
+      [resolved({ type: 'jet_drone', action: 'update', toward: 'Матвіївка' })],
+      other,
+    )
+    expect(same).toBe(id)
+    expect(tracker.active()).toHaveLength(1)
+  })
+
+  it('publishes the trail of reported places', () => {
+    const { tracker } = setup()
+    const [id] = tracker.apply([resolved({ location: 'Василівка', heading: 'N' })], ctx(0))
+    tracker.apply(
+      [resolved({ action: 'update', location: 'Балабине' })],
+      ctx(20, { parentTrackIds: [id!] }),
+    )
+    expect(tracker.get(id!)!.trail!.map((p) => p.name)).toEqual(['Василівка', 'Балабине'])
   })
 })

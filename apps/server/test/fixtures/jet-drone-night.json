@@ -1,0 +1,582 @@
+[
+  {
+    "channel": "gnilayachereha",
+    "id": 94741,
+    "date": 1795658632000,
+    "replyToId": null,
+    "text": "Новий реактив з півночі до Новомиколаївки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": 1,
+          "action": "new",
+          "location": null,
+          "precision": null,
+          "from": "північні напрями",
+          "toward": "Новомиколаївка",
+          "heading": "S",
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187871,
+    "date": 1795658683000,
+    "replyToId": null,
+    "text": "Заходить ще один реактив з Дніпропетровщини \nЙде курсом на Самійлівку з Трудового",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": "geran_3",
+          "count": 1,
+          "action": "new",
+          "location": "Трудове",
+          "precision": null,
+          "from": "Дніпропетровська область",
+          "toward": "Самійлівка",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187872,
+    "date": 1795658749000,
+    "replyToId": 187871,
+    "text": "Довернув на Терсянку",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Трудове",
+          "precision": null,
+          "from": null,
+          "toward": "Терсянка",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187873,
+    "date": 1795658847000,
+    "replyToId": 187872,
+    "text": "Далі йде курсом на Ясну Поляну \n\nВисота 1800",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Ясна Поляна",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94742,
+    "date": 1795658850000,
+    "replyToId": 94741,
+    "text": "До Ясної Поляни продовжує рух",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Ясна Поляна",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "zp_zaporozie",
+    "id": 102385,
+    "date": 1795658902000,
+    "replyToId": null,
+    "text": "Реактив до Ясної Поляни продовжує рух",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Ясна Поляна",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        },
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Ясна Поляна",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187874,
+    "date": 1795658920000,
+    "replyToId": 187873,
+    "text": "Проходить східніше \nКурс Жовта Круча/Одарівка",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": "near",
+          "from": null,
+          "toward": "Жовта Круча",
+          "heading": "E",
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94743,
+    "date": 1795659033000,
+    "replyToId": 94742,
+    "text": "Таврійське",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Таврійське",
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187875,
+    "date": 1795659077000,
+    "replyToId": 187874,
+    "text": "Проходить східніше Одарівки біля Таврійського \nКурс на Новояковлівку/Степногірськ",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": 1,
+          "action": "update",
+          "location": "Таврійське",
+          "precision": "exact",
+          "from": null,
+          "toward": "Новояковлівка",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94744,
+    "date": 1795659185000,
+    "replyToId": 94743,
+    "text": "Далі до Малокатеринівки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Малокатеринівка",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "zp_zaporozie",
+    "id": 102386,
+    "date": 1795659202000,
+    "replyToId": 102385,
+    "text": "Далі до Малокатеринівки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Таврійське",
+          "precision": null,
+          "from": null,
+          "toward": "Малокатеринівка",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187876,
+    "date": 1795659221000,
+    "replyToId": 187875,
+    "text": "Повернув на Шевченківське/Григорівське",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Таврійське",
+          "precision": "near",
+          "from": null,
+          "toward": "Шевченківське",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187877,
+    "date": 1795659234000,
+    "replyToId": 187876,
+    "text": "Пройшов Комишуваху вздовж траси",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Комишуваха",
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94745,
+    "date": 1795659239000,
+    "replyToId": 94744,
+    "text": "Зміна курсу до Новотаврійського повз Григорівське",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Григорівське",
+          "precision": null,
+          "from": null,
+          "toward": "Новотаврійське",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187878,
+    "date": 1795659281000,
+    "replyToId": 187877,
+    "text": "Оленівка на північ",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Оленівка",
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": "N",
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187879,
+    "date": 1795659298000,
+    "replyToId": 187878,
+    "text": "Повз Новотаврійське на Бекарівку",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Новотаврійське",
+          "precision": null,
+          "from": null,
+          "toward": "Бекарівка",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187880,
+    "date": 1795659331000,
+    "replyToId": 187879,
+    "text": "Вільнянськ уважно по ньому \nЗнизився до 600м",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Вільнянськ",
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94746,
+    "date": 1795659354000,
+    "replyToId": 94745,
+    "text": "На Вільнянськ",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Вільнянськ",
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187881,
+    "date": 1795659400000,
+    "replyToId": 187880,
+    "text": "Маневрує Купріянівка/Троянди",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Купріянівка",
+          "precision": "near",
+          "from": null,
+          "toward": null,
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187882,
+    "date": 1795659419000,
+    "replyToId": 187881,
+    "text": "Довернув на Новософіївку",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Новософіївка",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94747,
+    "date": 1795659423000,
+    "replyToId": 94746,
+    "text": "Довертає до Матвіївки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Григорівське",
+          "precision": null,
+          "from": null,
+          "toward": "Матвіївка",
+          "heading": null,
+          "track_id": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  }
+]

@@ -13,7 +13,6 @@ interface Props {
   onaddmap: () => void
   ontogglepush: (on: boolean) => void
   ontestsound: (category: SoundCategory) => void
-  onlegend: () => void
   oninstall: () => void
   onclose: () => void
 }
@@ -27,7 +26,6 @@ let {
   onaddmap,
   ontogglepush,
   ontestsound,
-  onlegend,
   oninstall,
   onclose,
 }: Props = $props()
@@ -233,9 +231,6 @@ $effect(() => {
             onclick={() => onchange({ theme: t.value })}>{t.label}</button
           >
         {/each}
-      </div>
-      <div class="row">
-        <button type="button" onclick={onlegend}>{uk.legend}</button>
       </div>
     </section>
 

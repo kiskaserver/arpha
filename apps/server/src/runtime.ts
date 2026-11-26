@@ -115,6 +115,11 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
         saveRoute(id, state)
         bus.publish({ type: 'track_removed', id })
       },
+      // A duplicate folded into another track: its route lives on in the survivor.
+      onMerge: (id) => {
+        store.deleteTrack(id)
+        bus.publish({ type: 'track_removed', id })
+      },
     },
     config.DEMO_MODE ? [] : store.loadTracks<TrackState>(),
   )

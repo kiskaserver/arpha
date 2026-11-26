@@ -1,0 +1,92 @@
+[
+  {
+    "name": "course-only reply has no position (real, 2026-11-26)",
+    "text": "Довернув на Терсянку",
+    "parents": [
+      "Заходить ще один реактив з Дніпропетровщини \nЙде курсом на Самійлівку з Трудового"
+    ],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "jet_drone",
+          "action": "update",
+          "location": null,
+          "toward": "Терсянка"
+        }
+      ]
+    }
+  },
+  {
+    "name": "course-only reply after a named place keeps location empty",
+    "text": "Далі до Малокатеринівки",
+    "parents": ["Таврійське", "До Ясної Поляни продовжує рух"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "action": "update",
+          "location": null,
+          "toward": "Малокатеринівка"
+        }
+      ]
+    }
+  },
+  {
+    "name": "altitude-only reply",
+    "text": "Висота 1500",
+    "parents": ["Повз Строганове на Дослідну"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "action": "update",
+          "altitude_m": 1500
+        }
+      ]
+    }
+  },
+  {
+    "name": "local slang kept as written + altitude",
+    "text": "Гортоп 200м висота",
+    "parents": ["Острів"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "action": "update",
+          "location": "Міськпаливо",
+          "altitude_m": 200
+        }
+      ]
+    }
+  },
+  {
+    "name": "compass origin is a heading, not a village",
+    "text": "Ще один реактив з півдня на Запоріжжя",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "jet_drone",
+          "toward": "Запоріжжя",
+          "from": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "quarries landmark",
+    "text": "Реактив йде повз Степне на Карʼєри/Мокрянку",
+    "parents": ["Курс на Степне"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "jet_drone",
+          "place": "Кар'єри"
+        }
+      ]
+    }
+  }
+]

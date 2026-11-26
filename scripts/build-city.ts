@@ -57,7 +57,8 @@ for (const el of data.elements) {
   const t = el.tags
   const name = t['name:uk'] ?? t.name
   const pos = el.center ?? (el.lat !== undefined ? { lat: el.lat, lon: el.lon! } : null)
-  if (!name || !pos || /садове товариство|^None$/.test(name)) continue
+  // Skip garden plots and "names" that are mapper notes ("Міст у дуже поганому стані").
+  if (!name || !pos || /садове товариство|^None$|поганому стані|аварійн/i.test(name)) continue
   const { k, e } = kindOf(t)
   const key = `${name}|${k}`
   if (seen.has(key)) continue // bridges are split into several ways

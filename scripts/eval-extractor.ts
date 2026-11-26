@@ -20,14 +20,16 @@ interface Expected {
   all_clear?: boolean
   closures?: { object: string; status: 'closed' | 'open' }[]
   /** `place` accepts either location or toward ("на X" is genuinely ambiguous). */
+  /** A field set to null must come back null ("Довернув на X" has no location). */
   events?: {
     type?: string
     action?: string
-    location?: string
+    location?: string | null
     toward?: string
     place?: string
-    from?: string
+    from?: string | null
     count?: number
+    altitude_m?: number
   }[]
 }
 interface Case {
@@ -90,6 +92,9 @@ for (const c of cases) {
     else checks.push(Boolean(g))
     if (e.action) checks.push(g?.action === e.action)
     if (e.location) checks.push(samePlace(g?.location, e.location))
+    if (e.location === null) checks.push(g?.location == null)
+    if (e.from === null) checks.push(g?.from == null)
+    if (e.altitude_m) checks.push(g?.altitude_m === e.altitude_m)
     if (e.toward) checks.push(samePlace(g?.toward, e.toward))
     if (e.place) checks.push(samePlace(g?.location, e.place) || samePlace(g?.toward, e.place))
     if (e.from) checks.push(samePlace(g?.from, e.from))

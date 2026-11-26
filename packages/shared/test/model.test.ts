@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { alertCovers, cityUnderAlert, OBLAST_FEATURE_ID, ZP_CITY_FEATURE_ID } from '../src/alerts'
 import { haversineKm, ZAPORIZHZHIA } from '../src/geo'
 import { bearingToCompassUk, THREAT_LABELS_UK, threatLabelUk } from '../src/labels'
-import { isExtrapolating, predictPosition, type Track } from '../src/model'
+import { isExtrapolating, kmToTarget, predictPosition, type Track } from '../src/model'
 import { pushSubscriptionSchema } from '../src/schemas'
 import { isThreatType, THREAT_PROFILES, THREAT_TYPES, typesCompatible } from '../src/threats'
 
@@ -140,5 +140,29 @@ describe('alertCovers (city is announced separately)', () => {
   it('outside the city, any overlapping polygon counts', () => {
     expect(alertCovers(a(['r11857100']), ['r123', 'r11857100'])).toBe(true)
     expect(alertCovers(a(['r9']), ['r123'])).toBe(false)
+  })
+})
+
+describe('predictPosition near a named target', () => {
+  // 10 km due east of the city, flying east at 180 km/h.
+  const target = { name: 'X', lat: ZAPORIZHZHIA.lat, lon: ZAPORIZHZHIA.lon + 10 / 74.6 }
+
+  it('stops at a target ahead instead of flying past it', () => {
+    const p = predictPosition({ ...base, target }, NOW + 10 * 60_000)!
+    expect(haversineKm(p, target)).toBeLessThan(0.2)
+    expect(haversineKm(ZAPORIZHZHIA, p)).toBeLessThan(10.2)
+  })
+
+  it('stops extrapolating once it reaches the target (no course drawn beyond it)', () => {
+    const t = { ...base, target }
+    expect(isExtrapolating(t, NOW + 2 * 60_000)).toBe(true) // 6 of 10 km
+    expect(isExtrapolating(t, NOW + 4 * 60_000)).toBe(false) // there
+    expect(kmToTarget(t)).toBeCloseTo(10, 0)
+    expect(kmToTarget({ ...t, headingDeg: 270 })).toBeNull()
+  })
+
+  it('ignores a target behind it (the course changed, not the destination)', () => {
+    const p = predictPosition({ ...base, target, headingDeg: 270 }, NOW + 10 * 60_000)!
+    expect(haversineKm(ZAPORIZHZHIA, p)).toBeCloseTo(30, 0)
   })
 })

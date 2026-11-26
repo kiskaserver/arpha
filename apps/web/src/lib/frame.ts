@@ -1,4 +1,5 @@
 import {
+  bearingDeg,
   destination,
   isExtrapolating,
   type LatLon,
@@ -19,6 +20,11 @@ export const fc = (features: Feature[]): GeoJSON.FeatureCollection => ({
   type: 'FeatureCollection',
   features,
 })
+
+/** Degrees between a course and the bearing to a point (0 = dead ahead, 180 = behind). */
+function offCourse(from: LatLon, heading: number, to: LatLon): number {
+  return Math.abs(((bearingDeg(from, to) - heading + 540) % 360) - 180)
+}
 
 /** Polygon approximating a circle (good enough for radii ≤ 100 km). */
 export function circlePolygon(center: LatLon, radiusKm: number, steps = 48): GeoJSON.Polygon {
@@ -67,6 +73,8 @@ export function buildFrame({ tracks, motion, now, selected, lingerMin }: FrameIn
   const cones: Feature[] = []
   const impacts: Feature[] = []
   const predicted: Feature[] = []
+  const trails: Feature[] = []
+  const trailPoints: Feature[] = []
   let maxSpeed = 0
   let selectedPose: (LatLon & { uncertaintyKm: number }) | null = null
 
@@ -81,8 +89,12 @@ export function buildFrame({ tracks, motion, now, selected, lingerMin }: FrameIn
         properties: { id: t.id, color, selected: t.id === selected },
       })
     }
+    const pose = t.position ? (motion.pose(t.id) ?? { ...t.position, heading: t.headingDeg }) : null
     if (t.id === selected && t.prediction) {
       for (const c of t.prediction.targets) {
+        // The forecast is made when a report arrives; the icon flies on between reports.
+        // Places it has since passed are behind it, not where it is going.
+        if (pose && pose.heading !== null && offCourse(pose, pose.heading, c) > 90) continue
         predicted.push({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [c.lon, c.lat] },
@@ -90,7 +102,7 @@ export function buildFrame({ tracks, motion, now, selected, lingerMin }: FrameIn
         })
       }
     }
-    if (!t.position) {
+    if (!t.position || !pose) {
       if (t.target && t.status === 'active') {
         targets.push({
           type: 'Feature',
@@ -100,8 +112,28 @@ export function buildFrame({ tracks, motion, now, selected, lingerMin }: FrameIn
       }
       continue
     }
-    const pose = motion.pose(t.id) ?? { ...t.position, heading: t.headingDeg }
     const moving = isExtrapolating(t, now)
+    // Where it has been: the reported villages, joined up to where it is now.
+    const trail = t.trail ?? []
+    if (trail.length) {
+      const sel = t.id === selected
+      trails.push({
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: [...trail.map((p) => [p.lon, p.lat]), [pose.lon, pose.lat]],
+        },
+        properties: { color, selected: sel },
+      })
+      trail.forEach((p, i) => {
+        trailPoints.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+          // Names for the selected track; the latest place gets the label first.
+          properties: { color, selected: sel, label: sel ? p.name : '', order: trail.length - i },
+        })
+      })
+    }
     if (moving && t.speedKmh) maxSpeed = Math.max(maxSpeed, t.speedKmh)
     points.push({
       type: 'Feature',
@@ -145,5 +177,16 @@ export function buildFrame({ tracks, motion, now, selected, lingerMin }: FrameIn
       selectedPose = { lat: pose.lat, lon: pose.lon, uncertaintyKm: t.uncertaintyKm + growth }
     }
   }
-  return { points, vectors, targets, cones, impacts, predicted, maxSpeed, selectedPose }
+  return {
+    points,
+    vectors,
+    targets,
+    cones,
+    impacts,
+    predicted,
+    trails,
+    trailPoints,
+    maxSpeed,
+    selectedPose,
+  }
 }

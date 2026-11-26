@@ -49,6 +49,31 @@ const HAS_CYRILLIC = /[А-Яа-яІіЇїЄєҐґ]/
 const MAX_AGE_MS = 3 * 60 * 60_000
 /** Reject geocodes this far from the linked track's last position. */
 const MAX_JUMP_KM = 120
+/** Launch areas ("з Криму", "з Таганрогу", "з Курська") are farther than the oblast. */
+const MAX_ORIGIN_KM = 1500
+/**
+ * Compass directions are not places: "з півночі" / "північні напрями" must not
+ * fuzzy-match the village Північне 100 km south. Exact village names (Північне,
+ * Південне, Східне) are neuter adjectives and do not match.
+ */
+const DIRECTION_TOKEN = new RegExp(
+  '^(?:з|зі|із|від|на|у|в|до|бік|напрям(?:ок|ку|ки|ків|и|ах|ами)?|' +
+    'північ|півночі|південь|півдня|півдні|схід|сходу|сході|захід|заходу|заході|' +
+    '(?:північн|південн|східн|західн)(?:ий|ого|ому|им|ім|і|их|ими)|північно|південно)$',
+  'u',
+)
+const DIRECTION_NAMED_PLACE = /^(?:північне|південне|східне|західне)$/u
+
+/** True when every word is a compass word or a preposition ("з південного заходу"). */
+export function isDirectionWord(name: string): boolean {
+  const words = name
+    .trim()
+    .toLowerCase()
+    .split(/[\s-]+/)
+    .filter(Boolean)
+  if (!words.length || (words.length === 1 && DIRECTION_NAMED_PLACE.test(words[0]!))) return false
+  return words.every((w) => DIRECTION_TOKEN.test(w))
+}
 
 /**
  * Message → extraction → geocoding → fusion. Messages of one channel are
@@ -176,7 +201,11 @@ export class Pipeline {
       // (a replay's stored ids belong to the previous run's tracker, not this one).
       const own = cached ? [] : (existing?.trackIds ?? [])
       const parentTrackIds = [...own, ...(parents[0]?.trackIds ?? [])]
-      const resolved = extraction.events.map((ev) => this.#resolve(ev, parentTrackIds))
+      // The model copies places from anywhere up the reply chain, not only the parent.
+      const parentPlaces = parents.flatMap((p) => p.places ?? [])
+      const resolved = extraction.events.map((ev) =>
+        this.#resolve(ev, parentTrackIds, text, parentPlaces),
+      )
       const ids = this.#d.tracker.apply(resolved, { message: msg, parentTrackIds, observedAt })
       if (extraction.all_clear) this.#d.tracker.allClear(observedAt)
 
@@ -201,27 +230,62 @@ export class Pipeline {
     }
   }
 
-  #resolve(ev: Extraction['events'][number], parentTrackIds: string[]): ResolvedEvent {
+  #resolve(
+    ev: Extraction['events'][number],
+    parentTrackIds: string[],
+    text: string,
+    parentPlaces: string[],
+  ): ResolvedEvent {
     const { gazetteer, tracker } = this.#d
-    const anchor =
-      (ev.track_id ? tracker.get(ev.track_id)?.position : null) ??
-      parentTrackIds.map((id) => tracker.get(id)?.position).find(Boolean) ??
-      null
+    const linked = [ev.track_id, ...parentTrackIds]
+      .map((id) => (id ? tracker.get(id) : undefined))
+      .filter((t) => t !== undefined)
+    const anchor = linked.map((t) => t.position).find(Boolean) ?? null
     const near: LatLon = anchor ?? ZAPORIZHZHIA
     // A name that only matches a homonym far outside the region is a miss, not a teleport.
-    const look = (name: string | null) => {
-      const place = name ? gazetteer.lookup(name, { near }) : null
-      if (!place || !inBbox(place)) return null
+    const look = (name: string | null, origin = false) => {
+      const place = name && !isDirectionWord(name) ? gazetteer.lookup(name, { near }) : null
+      if (!place) return null
+      // Origins legitimately lie outside the oblast: "з Криму", "з Таганрогу".
+      if (origin) return haversineKm(ZAPORIZHZHIA, place) <= MAX_ORIGIN_KM ? place : null
+      if (!inBbox(place)) return null
       // Relative to a known track, a jump this large is a homonym, not a flight.
       if (anchor && haversineKm(anchor, place) > MAX_JUMP_KM) return null
       return place
     }
+    let locationPlace = look(ev.location)
+    // "Довернув на X" in reply to "над Y": the model sometimes repeats Y as the current
+    // position, which pins the object to where it was. Keep a repeated place only when
+    // this post itself names it.
+    const repeated = (name: string) =>
+      linked.some((t) => t.placeName === name) ||
+      parentPlaces.some((p) => p === name || look(p)?.name === name)
+    if (
+      locationPlace &&
+      ev.action === 'update' &&
+      repeated(locationPlace.name) &&
+      !this.#names(text, locationPlace.name, near)
+    ) {
+      locationPlace = null
+    }
     return {
       ...ev,
-      locationPlace: look(ev.location),
-      fromPlace: look(ev.from),
+      locationPlace,
+      fromPlace: look(ev.from, true),
       towardPlace: look(ev.toward),
     }
+  }
+
+  /** Whether the post text itself names `place` (directly, by an alias or slang). */
+  #names(text: string, place: string, near: LatLon): boolean {
+    const words = text.split(/[\s,.;:!?()«»"/+—–-]+/u).filter((w) => w.length > 1)
+    for (let i = 0; i < words.length; i++) {
+      for (let n = 1; n <= 3 && i + n <= words.length; n++) {
+        if (this.#d.gazetteer.lookup(words.slice(i, i + n).join(' '), { near })?.name === place)
+          return true
+      }
+    }
+    return false
   }
 
   async #replyChain(msg: RawMessage): Promise<ParentMessage[]> {
@@ -230,7 +294,9 @@ export class Pipeline {
     while (replyTo !== null && parents.length < MAX_REPLY_DEPTH) {
       const stored = this.#d.store.getMessage(msg.channel, replyTo)
       if (stored) {
-        parents.push({ text: stored.text, date: stored.date, trackIds: stored.trackIds })
+        const events = Pipeline.parseStored(stored.extraction)?.events ?? []
+        const places = events.flatMap((e) => [e.location, e.toward]).filter((n) => n !== null)
+        parents.push({ text: stored.text, date: stored.date, trackIds: stored.trackIds, places })
         replyTo = stored.replyToId
         continue
       }

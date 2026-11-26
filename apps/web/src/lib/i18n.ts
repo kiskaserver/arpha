@@ -22,6 +22,8 @@ export const uk = {
   noPosition: 'без координат',
 
   speed: 'Швидкість',
+  altitude: 'Висота',
+  meters: 'м',
   course: 'Курс',
   eta: 'Підліт до вас',
   etaNone: 'Курс не на вас',

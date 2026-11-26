@@ -379,6 +379,33 @@ describe('frame', () => {
     expect(f.selectedPose!.uncertaintyKm).toBeCloseTo(3.8, 5)
   })
 
+  it('draws where a threat has been, naming the villages only for the selected one', () => {
+    const trail = [
+      { name: 'Таврійське', lat: 47.653, lon: 35.695, at: NOW - 600_000 },
+      { name: 'Комишуваха', lat: 47.715, lon: 35.524, at: NOW - 300_000 },
+    ]
+    const tracks = [track({ id: 'a', trail }), track({ id: 'b', trail })]
+    const f = buildFrame({
+      tracks,
+      motion: new MotionModel(),
+      now: NOW,
+      selected: 'a',
+      lingerMin: 0,
+    })
+    expect(f.trails).toHaveLength(2)
+    // The line ends at the icon, so the path joins up with where it is now.
+    const line = f.trails[0]!.geometry as GeoJSON.LineString
+    expect(line.coordinates).toHaveLength(3)
+    const here = tracks[0]!.position!
+    expect(line.coordinates.at(-1)).toEqual([here.lon, here.lat])
+    const labels = f.trailPoints.map((p) => p.properties.label)
+    expect(labels).toEqual(['Таврійське', 'Комишуваха', '', ''])
+    // The latest place wins a label collision.
+    expect(f.trailPoints[1]!.properties.order).toBeLessThan(
+      f.trailPoints[0]!.properties.order as number,
+    )
+  })
+
   it('falls back to the raw position when motion has no entry', () => {
     const f = buildFrame({
       tracks: [track({ id: 'z' })],

@@ -158,6 +158,7 @@ export class DemoSimulator {
       from: null,
       toward: null,
       heading: null,
+      altitude_m: null,
       track_id: this.#groups.get(step.group) ?? null,
       confidence: 0.9,
       ...step.event,

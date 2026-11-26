@@ -78,6 +78,7 @@ const flight = $derived(
     {/if}
     <div><dt>{uk.speed}</dt><dd>{formatSpeed(t)}</dd></div>
     <div><dt>{uk.course}</dt><dd>{formatCourse(t)}</dd></div>
+    {#if t.altitudeM}<div><dt>{uk.altitude}</dt><dd>{t.altitudeM} {uk.meters}</dd></div>{/if}
     {#if t.placeName}<div><dt>{uk.place}</dt><dd>{t.placeName}</dd></div>{/if}
     {#if t.target && a}<div><dt>{uk.target}</dt><dd>{t.target.name}</dd></div>{/if}
     {#if t.origin}<div><dt>{uk.origin}</dt><dd>{uk.fromSide(t.origin.name)}</dd></div>{/if}

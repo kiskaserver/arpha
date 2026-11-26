@@ -176,6 +176,8 @@ export class MapController {
       'hotspots',
       'cones',
       'impacts',
+      'trails',
+      'trail-points',
       'vectors',
       'targets',
       'uncertainty',
@@ -319,6 +321,48 @@ export class MapController {
       paint: { 'fill-color': '#ffffff', 'fill-opacity': this.#dark ? 0.08 : 0.2 },
     })
     map.addLayer({
+      id: 'trails',
+      type: 'line',
+      source: 'trails',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': ['case', ['get', 'selected'], 3, 1.5],
+        'line-opacity': ['case', ['get', 'selected'], 0.85, 0.45],
+      },
+    })
+    map.addLayer({
+      id: 'trail-points',
+      type: 'circle',
+      source: 'trail-points',
+      paint: {
+        'circle-radius': ['case', ['get', 'selected'], 4, 2.5],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': ['case', ['get', 'selected'], 0.95, 0.5],
+        'circle-stroke-color': this.#dark ? '#0b1220' : '#fff',
+        'circle-stroke-width': 1,
+      },
+    })
+    map.addLayer({
+      id: 'trail-labels',
+      type: 'symbol',
+      source: 'trail-points',
+      filter: ['!=', ['get', 'label'], ''],
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': 11,
+        'text-offset': [0, 1.1],
+        'text-optional': true,
+        'symbol-sort-key': ['get', 'order'],
+      },
+      paint: {
+        'text-color': this.#dark ? '#d8dee9' : '#333',
+        'text-halo-color': this.#dark ? '#0b1220' : '#fff',
+        'text-halo-width': 1.5,
+      },
+    })
+    map.addLayer({
       id: 'vectors',
       type: 'line',
       source: 'vectors',
@@ -362,7 +406,9 @@ export class MapController {
         'text-font': ['Noto Sans Bold'],
         'text-size': 12,
         'text-offset': [0, 1.4],
-        'text-allow-overlap': true,
+        // Zoomed out, "Запоріжжя" and "Центр міста" collide: show the likelier one.
+        'text-allow-overlap': false,
+        'symbol-sort-key': ['-', 1, ['get', 'p']],
       },
       paint: {
         'text-color': this.#dark ? '#fff' : '#111',
@@ -689,6 +735,8 @@ export class MapController {
     set('cones', frame.cones)
     set('impacts', frame.impacts)
     set('predicted', frame.predicted)
+    set('trails', frame.trails)
+    set('trail-points', frame.trailPoints)
     set(
       'uncertainty',
       frame.selectedPose

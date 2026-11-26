@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Store } from '../src/db'
 import type { Extraction, ExtractionInput, Extractor, RawMessage } from '../src/extract/types'
 import { Tracker } from '../src/fusion/tracker'
-import { Pipeline } from '../src/ingest/pipeline'
+import { isDirectionWord, Pipeline } from '../src/ingest/pipeline'
 import { silentLogger } from '../src/logger'
 import { event, gazetteer, message, min } from './helpers'
 
@@ -170,7 +170,7 @@ describe('Pipeline', () => {
     const id = tracker.active()[0]!.id
     await pipeline.submit(message({ id: 2, text: 'мінус', replyToId: 1, date: min(0.5) }))
     expect(extract.mock.calls[1]![0].parents).toEqual([
-      { text: 'шахед Оріхів', date: min(0), trackIds: [id] },
+      { text: 'шахед Оріхів', date: min(0), trackIds: [id], places: ['Оріхів'] },
     ])
     expect(tracker.get(id)!.status).toBe('destroyed')
   })
@@ -278,5 +278,63 @@ describe('Pipeline', () => {
       events: [],
     })
     expect(Pipeline.parseStored('[]')).toBeNull()
+  })
+
+  it('compass words are directions, not villages ("з півночі" ≠ Північне)', async () => {
+    const { pipeline, tracker } = setup(() =>
+      relevant(
+        event({ type: 'jet_drone', from: 'північні напрями', toward: 'Запоріжжя', heading: 'S' }),
+      ),
+    )
+    await pipeline.submit(message({ id: 1, text: 'Реактив з півночі на Запоріжжя' }))
+    const [t] = tracker.active()
+    expect(t!.origin).toBeNull()
+    expect(t!.target?.name).toBe('Запоріжжя')
+    expect(isDirectionWord('з південного заходу')).toBe(true)
+    expect(isDirectionWord('Північне')).toBe(false)
+    expect(isDirectionWord('Південноукраїнськ')).toBe(false)
+  })
+
+  it('keeps launch areas outside the oblast as the origin', async () => {
+    const { pipeline, tracker } = setup(() =>
+      relevant(event({ type: 'ballistic', from: 'Крим', toward: 'Запоріжжя' })),
+    )
+    await pipeline.submit(message({ id: 1, text: 'Балістика з Криму на Запоріжжя' }))
+    expect(tracker.active()[0]!.origin?.name).toBe('Крим')
+  })
+
+  it('drops a place the model copied from the reply chain into a course-only reply', async () => {
+    const { pipeline, tracker } = setup((i) =>
+      i.message.id === 1
+        ? relevant(event({ type: 'jet_drone', location: 'Вільнянськ', heading: 'S' }))
+        : relevant(
+            event({
+              type: 'jet_drone',
+              action: 'update',
+              location: 'Вільнянськ',
+              toward: 'Матвіївка',
+            }),
+          ),
+    )
+    await pipeline.submit(message({ id: 1, text: 'Реактив над Вільнянськом' }))
+    await pipeline.submit(
+      message({ id: 2, text: 'Довертає до Матвіївки', replyToId: 1, date: min(0.5) }),
+    )
+    const [t] = tracker.active()
+    expect(t!.trail!.map((p) => p.name)).toEqual(['Вільнянськ']) // no second, fake sighting
+    expect(t!.target?.name).toBe('Матвіївка')
+  })
+
+  it('keeps a repeated place when the reply itself names it', async () => {
+    const { pipeline, tracker, setNow } = setup(() =>
+      relevant(event({ type: 'jet_drone', action: 'update', location: 'Вільнянськ' })),
+    )
+    await pipeline.submit(message({ id: 1, text: 'Реактив над Вільнянськом' }))
+    setNow(min(4))
+    await pipeline.submit(
+      message({ id: 2, text: 'Вільнянськ уважно, кружляє', replyToId: 1, date: min(3) }),
+    )
+    expect(tracker.active()[0]!.sources).toHaveLength(2)
+    expect(tracker.active()[0]!.stateAt).toBe(min(3))
   })
 })

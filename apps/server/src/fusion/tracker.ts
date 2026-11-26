@@ -2,7 +2,9 @@ import { randomBytes } from 'node:crypto'
 import {
   bearingDeg,
   compassToBearing,
+  destination,
   haversineKm,
+  kmToTarget,
   type LatLon,
   localFrame,
   type NamedPoint,
@@ -65,6 +67,8 @@ export interface TrackerHooks {
   predict?(track: Track, now: number): Track['prediction']
   onChange?(track: Track, state: TrackState): void
   onRemove?(id: string, state: TrackState): void
+  /** `id` turned out to be the same object as `into` and was folded into it. */
+  onMerge?(id: string, into: string): void
 }
 
 /** Below this, the filter's velocity is noise, not a course. */
@@ -74,6 +78,17 @@ const BASE_GATE_KM = 20
 const DESTROYED_LINGER_MS = 90_000
 const LOST_LINGER_MS = 60_000
 const MAX_SOURCES = 6
+/** Places sent to clients to draw where the object has been. */
+const TRAIL_POINTS = 15
+/**
+ * Reports lag behind the object by tens of seconds, so two places named a minute
+ * apart can imply twice the real speed. Above this share of cruise it is noise.
+ */
+const SPEED_CAP_FACTOR = 1.2
+/** Two channels describing one object: tracks this close, on similar courses, merge. */
+const MERGE_KM = 6
+const MERGE_HEADING_DEG = 60
+const MERGE_RECENT_MS = 4 * 60_000
 /** Weapons whose "lost"/"впали" means they hit the ground. */
 const IMPACTING = new Set<ThreatType>(['kab', 'ballistic', 'cruise_missile', 'mlrs', 'artillery'])
 const frame = localFrame(ZAPORIZHZHIA)
@@ -98,6 +113,8 @@ function observationSigma(place: Place, precision: ResolvedEvent['precision']): 
  */
 export class Tracker {
   readonly #states = new Map<string, TrackState>()
+  /** Ids of merged tracks → the track they live on in (replies still name the old id). */
+  readonly #aliases = new Map<string, string>()
   readonly #hooks: TrackerHooks
 
   constructor(hooks: TrackerHooks = {}, initial: TrackState[] = []) {
@@ -110,7 +127,11 @@ export class Tracker {
   }
 
   get(id: string): Track | undefined {
-    return this.#states.get(id)?.track
+    return this.#state(id)?.track
+  }
+
+  #state(id: string): TrackState | undefined {
+    return this.#states.get(this.#aliases.get(id) ?? id)
   }
 
   tracks(): Track[] {
@@ -136,11 +157,75 @@ export class Tracker {
   /** Applies one message's events. Returns the track id each event landed on (null if dropped). */
   apply(events: ResolvedEvent[], ctx: ApplyContext): (string | null)[] {
     const used = new Set<string>()
-    return events.map((ev) => {
+    const ids = events.map((ev) => {
       const id = this.#applyOne(ev, ctx, used)
       if (id) used.add(id)
       return id
     })
+    return ids.map((id) => (id ? this.#mergeDuplicates(id, ctx.observedAt) : id))
+  }
+
+  /**
+   * Different channels open their own thread for the same drone ("з півночі до X" vs
+   * "з Дніпропетровщини на Y"), so one object becomes two tracks that then fly over the
+   * same villages. When an updated track sits on top of another one of the same kind, on
+   * a similar course, and both were just observed, fold the younger into the older.
+   */
+  #mergeDuplicates(id: string, now: number): string {
+    const a = this.#states.get(id)
+    if (a?.track.status !== 'active' || !a.kf) return id
+    for (const b of this.#states.values()) {
+      if (b === a || b.track.status !== 'active' || !b.kf) continue
+      if (!typesCompatible(a.track.type, b.track.type)) continue
+      if (now - a.lastObsAt > MERGE_RECENT_MS || now - b.lastObsAt > MERGE_RECENT_MS) continue
+      if (haversineKm(this.#predicted(a, now).point, this.#predicted(b, now).point) > MERGE_KM)
+        continue
+      const ha = a.track.headingDeg
+      const hb = b.track.headingDeg
+      if (ha !== null && hb !== null && Math.abs(((ha - hb + 540) % 360) - 180) > MERGE_HEADING_DEG)
+        continue
+      const [keep, drop] = a.track.createdAt <= b.track.createdAt ? [a, b] : [b, a]
+      this.#merge(keep, drop)
+      return keep.track.id
+    }
+    return id
+  }
+
+  #merge(keep: TrackState, drop: TrackState): void {
+    const fresher = drop.lastObsAt > keep.lastObsAt ? drop : keep
+    const sources = [...keep.track.sources, ...drop.track.sources]
+      .sort((x, y) => y.at - x.at)
+      .slice(0, MAX_SOURCES)
+    const path = [...keep.path, ...drop.path].sort((x, y) => x.at - y.at)
+    keep.path = path.filter((p, i) => p.place !== path[i - 1]?.place).slice(-60)
+    keep.channels = [...new Set([...keep.channels, ...drop.channels])]
+    keep.kf = fresher.kf
+    keep.lastObsAt = fresher.lastObsAt
+    keep.track = {
+      ...keep.track,
+      type: keep.track.type === 'unknown' ? drop.track.type : keep.track.type,
+      model: keep.track.model ?? drop.track.model,
+      count: Math.max(keep.track.count ?? 0, drop.track.count ?? 0) || null,
+      stateAt: fresher.track.stateAt,
+      placeName: fresher.track.placeName,
+      target: fresher.track.target ?? keep.track.target,
+      origin: keep.track.origin ?? drop.track.origin,
+      altitudeM: fresher.track.altitudeM ?? keep.track.altitudeM ?? drop.track.altitudeM ?? null,
+      sources,
+      confidence: Math.min(
+        0.99,
+        Math.max(keep.track.confidence, drop.track.confidence) + 0.1 * (keep.channels.length - 1),
+      ),
+      updatedAt: Math.max(keep.track.updatedAt, drop.track.updatedAt),
+    }
+    this.#states.delete(drop.track.id)
+    for (const [from, to] of this.#aliases) {
+      if (to === drop.track.id) this.#aliases.set(from, keep.track.id)
+    }
+    this.#aliases.set(drop.track.id, keep.track.id)
+    this.#hooks.onMerge?.(drop.track.id, keep.track.id)
+    this.#refresh(keep)
+    this.#emit(keep, keep.track.updatedAt)
   }
 
   /** "Відбій" for the region: everything still in the air is considered gone. */
@@ -156,6 +241,7 @@ export class Tracker {
     for (const s of [...this.#states.values()]) {
       if (s.removeAt !== null && now >= s.removeAt) {
         this.#states.delete(s.track.id)
+        for (const [from, to] of this.#aliases) if (to === s.track.id) this.#aliases.delete(from)
         this.#hooks.onRemove?.(s.track.id, s)
         continue
       }
@@ -233,12 +319,12 @@ export class Tracker {
 
     // 1. The model linked it explicitly.
     if (ev.track_id) {
-      const s = this.#states.get(ev.track_id)
+      const s = this.#state(ev.track_id)
       if (usable(s)) return s
     }
 
-    // 2. A reply to a post about known tracks.
-    const parents = ctx.parentTrackIds.map((id) => this.#states.get(id)).filter(usable)
+    // 2. A reply to a post about known tracks (merged ids resolve to their survivor).
+    const parents = [...new Set(ctx.parentTrackIds.map((id) => this.#state(id)))].filter(usable)
     const freeParents = parents.filter((s) => !used.has(s.track.id))
     if (freeParents.length === 1) return freeParents[0]!
     if (freeParents.length > 1)
@@ -248,10 +334,12 @@ export class Tracker {
     const candidates = [...this.#states.values()].filter((s) => usable(s) && !used.has(s.track.id))
     if (!point) {
       const target = ev.towardPlace?.name
-      return (
-        candidates.find((s) => !s.track.position && target && s.track.target?.name === target) ??
-        null
-      )
+      if (!target) return null
+      const same = candidates.filter((s) => s.track.target?.name === target)
+      // "Реактив до Ясної Поляни продовжує рух" from another channel: the one object of
+      // this kind already heading there. A "new" report means another object.
+      if (ev.action !== 'new' && same.length === 1) return same[0]!
+      return same.find((s) => !s.track.position) ?? null
     }
     return this.#nearest(candidates, point, ctx.observedAt, true)
   }
@@ -284,7 +372,15 @@ export class Tracker {
     const profile = THREAT_PROFILES[s.track.type]
     const dt = Math.min(Math.max(0, (at - s.track.stateAt) / 60_000), profile.maxExtrapolationMin)
     const kf = kfPredict(s.kf, dt, profile.processNoise)
-    return { point: frame.toLatLon(kf.x[0], kf.x[1]), sigma: kfPositionSigma(kf) }
+    // Like the map: an object with a named target waits there, not beyond it, so the next
+    // report is matched against where it was going rather than somewhere past it.
+    const v = kfVelocity(s.kf)
+    const left = s.track.position ? kmToTarget({ ...s.track, headingDeg: v.headingDeg }) : null
+    const point =
+      left !== null && (v.speedKmh / 60) * dt > left
+        ? destination(s.track.position!, v.headingDeg, left)
+        : frame.toLatLon(kf.x[0], kf.x[1])
+    return { point, sigma: kfPositionSigma(kf) }
   }
 
   #courseHint(ev: ResolvedEvent, from: LatLon | null): number | null {
@@ -323,6 +419,7 @@ export class Tracker {
       placeName: obs?.name ?? null,
       target: toTarget(ev.towardPlace),
       origin: toTarget(ev.fromPlace),
+      altitudeM: ev.altitude_m ?? null,
       prediction: null,
       confidence: ev.confidence,
       sources: [],
@@ -344,8 +441,9 @@ export class Tracker {
     const profile = THREAT_PROFILES[type]
     const model = ev.model ?? state.track.model ?? null
     const speed = cruiseKmh(type, model)
-    const maxSpeed = maxKmh(type, model)
+    const maxSpeed = Math.min(maxKmh(type, model), speed * SPEED_CAP_FACTOR)
     const target = toTarget(ev.towardPlace) ?? state.track.target
+    let reaimed = false
 
     if (obs && profile.moving) {
       if (!state.kf) {
@@ -375,6 +473,18 @@ export class Tracker {
         }
         state.kf = kfClampSpeed(kf, maxSpeed)
       }
+    } else if (!obs && profile.moving && state.kf && (ev.towardPlace || ev.heading)) {
+      // "Довернув на X" / "курс на північ": a new course without a position.
+      // Turn from where we believe it is now instead of flying the old course.
+      const dt = Math.min((at - state.track.stateAt) / 60_000, profile.maxExtrapolationMin)
+      let kf = kfPredict(state.kf, Math.max(0, dt), profile.processNoise)
+      const course = this.#courseHint(ev, frame.toLatLon(kf.x[0], kf.x[1]))
+      if (course !== null) {
+        const v = Math.min(Math.max(kfVelocity(kf).speedKmh, speed * 0.7), maxSpeed)
+        kf = kfUpdateVelocity(kf, velocityFrom(course, v), (speed / 60) * 0.2).state
+        state.kf = kfClampSpeed(kf, maxSpeed)
+        reaimed = true
+      }
     } else if (!profile.moving && obs) {
       state.kf = null
     }
@@ -384,12 +494,13 @@ export class Tracker {
       type,
       model,
       count: ev.count ?? state.track.count,
-      stateAt: obs ? at : state.track.stateAt,
+      stateAt: obs || reaimed ? at : state.track.stateAt,
       position: obs && !profile.moving ? obs.point : state.track.position,
       uncertaintyKm: obs && !profile.moving ? obs.sigma : state.track.uncertaintyKm,
       placeName: obs?.name ?? state.track.placeName,
       target,
       origin: toTarget(ev.fromPlace) ?? state.track.origin,
+      altitudeM: ev.altitude_m ?? state.track.altitudeM ?? null,
     }
     if (obs) {
       state.lastObsAt = Math.max(state.lastObsAt, ctx.observedAt)
@@ -401,7 +512,10 @@ export class Tracker {
 
   /** Recompute wire kinematics from the filter. */
   #refresh(state: TrackState): void {
-    const t = state.track
+    const trail = state.path
+      .slice(-TRAIL_POINTS)
+      .map((p) => ({ name: p.place, lat: p.lat, lon: p.lon, at: p.at }))
+    const t = { ...state.track, trail }
     if (!state.kf) {
       state.track = { ...t, speedKmh: null, headingDeg: null }
       return

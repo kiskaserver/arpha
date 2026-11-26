@@ -60,6 +60,15 @@ export const extractedEventSchema = z.object({
     .catch(null)
     .transform((v) => v ?? null),
   track_id: nullableString,
+  /** Flight altitude in metres when the post states it ("Висота 700", "знизився до 600м"). */
+  altitude_m: z.coerce
+    .number()
+    .int()
+    .min(10)
+    .max(20_000)
+    .nullish()
+    .catch(null)
+    .transform((v) => v ?? null),
   confidence: z.coerce.number().min(0).max(1).catch(0.5),
 })
 
@@ -110,6 +119,8 @@ export interface ParentMessage {
   text: string
   date: number
   trackIds: string[]
+  /** Places the parent's extraction named (not sent to the model). */
+  places?: string[]
 }
 
 export interface ExtractionInput {

@@ -459,7 +459,6 @@ const locate = () => watchMe(true)
       onaddmap={startPicking}
       ontogglepush={togglePush}
       ontestsound={testSound}
-      onlegend={() => ((showSettings = false), (showLegend = true))}
       oninstall={async () => {
         await installPrompt?.prompt()
         installPrompt = null

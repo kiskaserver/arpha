@@ -42,6 +42,7 @@ export function event(overrides: Partial<ExtractedEvent> = {}): ExtractedEvent {
     toward: null,
     heading: null,
     track_id: null,
+    altitude_m: null,
     confidence: 0.8,
     ...overrides,
   }

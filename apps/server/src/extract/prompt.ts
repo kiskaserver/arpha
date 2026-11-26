@@ -74,6 +74,10 @@ export const REPORT_TOOL = {
               description: 'Where it is heading (Ukrainian, nominative).',
             },
             heading: { type: ['string', 'null'], enum: [...HEADINGS, null] },
+            altitude_m: {
+              type: ['integer', 'null'],
+              description: 'Altitude in metres when stated ("Висота 700", "500м висота").',
+            },
             track_id: {
               type: ['string', 'null'],
               description: 'Id from ACTIVE TRACKS if this is the same object/group, else null.',
@@ -140,6 +144,13 @@ LOCATIONS — return canonical Ukrainian names in the nominative case:
 - heading = compass direction only when stated ("північно-західним курсом" → NW, "на схід" → E).
 - precision: exact for a named village/landmark/micro-district, near for "в районі/неподалік/околиці" or lists, area for raions/oblast.
 - Do not invent places. Leave fields null when not stated.
+- location is only a place THIS post names as the current position. A reply that only gives a new course
+  ("Довернув на X", "Далі курсом на X", "На X") has location null and toward X — never repeat the parent's place.
+- A local name you do not recognise: return it as written, in the nominative ("Гортоп", "Кар'єри"). Never
+  replace it with "Запоріжжя".
+- "з півночі", "з півдня", "зі сходу", "з заходу" are directions, not places: heading S, N, W, E; from null.
+- ALTITUDE: "Висота 700", "500м висота", "знизився до 600м" → altitude_m. A reply with only an altitude is an
+  update of the same object with altitude_m set.
 
 LINKING:
 - If the message replies to a previous post, it is about the same object: reuse the parent's track id and type.
@@ -173,7 +184,10 @@ EXAMPLES (post → report; fields not shown are null, count 1, action new, confi
 15. "Над Шевчиком і Бородком по одному мопеду" → [{type:shahed, location:"Шевченківський район"}, {type:shahed, location:"Бородинський"}]
 16. "Відбій. Локаційно чисто 🟢" → relevant:true, all_clear:true, events []
 17. "Світло з 18:00 по 22:00, черга 3.1" → relevant:false, events []
-18. "Ранкове зведення: за добу 12 обстрілів по області" → relevant:false (a past summary), events []`
+18. "Ранкове зведення: за добу 12 обстрілів по області" → relevant:false (a past summary), events []
+19. Reply to track t4 ("Реактив над Вільнянськом"): "Довернув на Новософіївку" → [{type:jet_drone, action:update, toward:"Новософіївка", track_id:"t4"}] (location null)
+20. Reply to track t4: "Ліве над вами ⏎ Висота 700" (⏎ = a line break) → [{type:jet_drone, action:update, location:"Запоріжжя-Ліве", altitude_m:700, track_id:"t4"}]
+21. "Новий реактив з півночі до Новомиколаївки" → [{type:jet_drone, heading:"S", toward:"Новомиколаївка"}]`
 
 function formatAge(ms: number, now: number): string {
   const min = Math.max(0, Math.round((now - ms) / 60_000))

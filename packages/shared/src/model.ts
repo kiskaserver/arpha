@@ -1,4 +1,4 @@
-import { destination, type LatLon } from './geo'
+import { bearingDeg, destination, haversineKm, type LatLon } from './geo'
 import { THREAT_PROFILES, type ThreatType } from './threats'
 
 export interface TrackSource {
@@ -14,6 +14,11 @@ export type TrackStatus = 'active' | 'destroyed' | 'lost'
 
 export interface NamedPoint extends LatLon {
   name: string
+}
+
+/** A place a source reported the object at, in flight order. */
+export interface TrailPoint extends NamedPoint {
+  at: number
 }
 
 export interface PredictedTarget extends NamedPoint {
@@ -55,6 +60,10 @@ export interface Track {
   target: NamedPoint | null
   /** Where it came from, when a source said so (e.g. ballistic "з Криму"). */
   origin: NamedPoint | null
+  /** Reported places so far, oldest first (absent on states saved by older versions). */
+  trail?: TrailPoint[]
+  /** Last altitude a source stated, metres ("Висота 700"). */
+  altitudeM?: number | null
   prediction: Prediction | null
   confidence: number
   sources: TrackSource[]
@@ -152,10 +161,23 @@ export function predictPosition(track: Track, now: number): LatLon | null {
   }
   const dtMin = Math.min(Math.max(0, now - track.stateAt) / 60_000, profile.maxExtrapolationMin)
   if (dtMin === 0) return track.position
-  return destination(track.position, track.headingDeg, (track.speedKmh / 60) * dtMin)
+  const km = (track.speedKmh / 60) * dtMin
+  return destination(track.position, track.headingDeg, Math.min(km, kmToTarget(track) ?? km))
 }
 
-/** Whether a track is still being extrapolated (false once the horizon is exceeded). */
+/**
+ * Distance left to a named target ahead, or null when there is none (or it is behind).
+ * Channels say "на X", not "через X": without a new report the object is assumed to
+ * stop at X rather than fly on out of the oblast and then jump back.
+ */
+export function kmToTarget(track: Track): number | null {
+  const { target, position, headingDeg } = track
+  if (!target || !position || headingDeg === null) return null
+  const off = Math.abs(((bearingDeg(position, target) - headingDeg + 540) % 360) - 180)
+  return off < 90 ? haversineKm(position, target) : null
+}
+
+/** Whether a track is still being extrapolated (false past the horizon or at its target). */
 export function isExtrapolating(track: Track, now: number): boolean {
   const profile = THREAT_PROFILES[track.type]
   return (
@@ -163,6 +185,14 @@ export function isExtrapolating(track: Track, now: number): boolean {
     profile.moving &&
     track.speedKmh !== null &&
     track.speedKmh > 0 &&
-    now - track.stateAt < profile.maxExtrapolationMin * 60_000
+    now - track.stateAt < profile.maxExtrapolationMin * 60_000 &&
+    !arrived(track, now)
   )
+}
+
+/** Dead reckoning has reached the named target: hold there, draw no course ahead. */
+function arrived(track: Track, now: number): boolean {
+  const left = kmToTarget(track)
+  if (left === null || track.speedKmh === null) return false
+  return ((track.speedKmh / 60) * (now - track.stateAt)) / 60_000 >= left - 0.05
 }

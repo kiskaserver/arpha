@@ -26,6 +26,10 @@ export interface Candidate extends LatLon {
 }
 
 const MAX_TARGETS = 3
+/** Candidates closer than this are one place on the map. */
+const MERGE_TARGETS_KM = 3
+/** Beyond this angle off the course a place is behind the object, not where it goes. */
+const MAX_OFF_COURSE_DEG = 90
 
 /**
  * Forecasts where a threat is heading and what it may hit.
@@ -100,6 +104,8 @@ export class Predictor {
       const d = haversineKm(track.position, c)
       if (d < 0.5 || d > reachKm * 1.15) continue
       const off = Math.abs(((bearingDeg(track.position, c) - track.headingDeg + 540) % 360) - 180)
+      // Never behind it: a past route may bend the forecast sideways, not backwards.
+      if (off > MAX_OFF_COURSE_DEG) continue
       const history = learned.get(c.name) ?? 0
       if (off > profile.coneHalfAngleDeg * 1.5 && history < 0.2) continue
       // A route that history says is common stays plausible even if the course says otherwise.
@@ -111,17 +117,34 @@ export class Predictor {
       const etaMin = off <= profile.coneHalfAngleDeg / 2 ? d / (track.speedKmh / 60) : null
       scored.push({ name: c.name, lat: c.lat, lon: c.lon, p: 0, etaMin, score })
     }
+    // A destination a source named, unless the object has passed it or turned away.
+    const named = track.target
+    const declaredAhead =
+      named !== null &&
+      Math.abs(((bearingDeg(track.position, named) - track.headingDeg + 540) % 360) - 180) <=
+        MAX_OFF_COURSE_DEG
     // The declared destination may be beyond the horizon — keep it in the list anyway.
-    if (track.target && !scored.some((s) => s.name === track.target!.name)) {
-      const d = haversineKm(track.position, track.target)
-      scored.push({ ...track.target, p: 0, etaMin: d / (track.speedKmh / 60), score: 0.5 })
+    if (named && declaredAhead && !scored.some((s) => s.name === named.name)) {
+      const d = haversineKm(track.position, named)
+      scored.push({ ...named, p: 0, etaMin: d / (track.speedKmh / 60), score: 0.5 })
     }
     if (!scored.length) return { ...base, targets: [], impact: null }
 
     scored.sort((a, b) => b.score - a.score)
-    const top = scored.slice(0, MAX_TARGETS)
+    // "Запоріжжя" and "Центр міста" are one spot on the map: fold near-duplicates
+    // into the likelier name instead of splitting the probability between them.
+    const merged: typeof scored = []
+    for (const s of scored) {
+      const twin = merged.find((m) => haversineKm(m, s) < MERGE_TARGETS_KM)
+      if (twin) twin.score += s.score
+      else merged.push(s)
+    }
+    const top = merged.slice(0, MAX_TARGETS)
     // A destination a source named explicitly always stays on the list.
-    const declared = track.target && scored.find((s) => s.name === track.target!.name)
+    const declared =
+      named && declaredAhead
+        ? merged.find((s) => haversineKm(s, named) < MERGE_TARGETS_KM)
+        : undefined
     if (declared && !top.includes(declared)) top[top.length - 1] = declared
     const total = top.reduce((s, t) => s + t.score, 0)
     const targets = top.map(({ score, ...t }) => ({
