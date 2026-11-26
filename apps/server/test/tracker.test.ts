@@ -601,4 +601,30 @@ describe('Tracker', () => {
     )
     expect(others.filter((id) => tracker.get(id)!.status === 'destroyed')).toHaveLength(1)
   })
+
+  it('"Впали" typed as an explosion still ends the KAB it replies to', () => {
+    const { tracker } = setup()
+    const [k] = tracker.apply([resolved({ type: 'kab', location: 'Новотаврійське' })], ctx(0))
+    tracker.apply(
+      [resolved({ type: 'explosion', action: 'lost' })],
+      ctx(1, { parentTrackIds: [k!] }),
+    )
+    expect(tracker.get(k!)!.status).toBe('lost')
+  })
+
+  it('a channel\'s "ще …" object is never merged back into its own earlier one', () => {
+    const { tracker } = setup()
+    const [a] = tracker.apply(
+      [resolved({ type: 'shahed', location: 'Смоляне', toward: 'Долинське' })],
+      ctx(0),
+    )
+    // Same channel, a minute later, right there: "Ще БпЛА повз Смоляне на Долинське".
+    const [b] = tracker.apply(
+      [resolved({ type: 'shahed', action: 'new', location: 'Смоляне', toward: 'Долинське' })],
+      ctx(1),
+    )
+    expect(b).not.toBe(a)
+    tracker.tick(min(2))
+    expect(tracker.active().filter((t) => t.type === 'shahed')).toHaveLength(2)
+  })
 })

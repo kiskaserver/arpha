@@ -400,7 +400,22 @@ export class Tracker {
       ) {
         return null
       }
-      return this.#create(ev, ctx, obs).track.id
+      const created = this.#create(ev, ctx, obs)
+      // "Ще БпЛА повз Смоляне": the channel says this is another object than the ones it is
+      // already reporting, so a later merge must not fold them back together.
+      if (ev.action === 'new') {
+        for (const other of this.#states.values()) {
+          if (
+            other !== created &&
+            other.track.status === 'active' &&
+            other.channels.includes(ctx.message.channel)
+          ) {
+            const [x, y] = [created.track.id, other.track.id].sort()
+            this.#distinct.add(`${x}|${y}`)
+          }
+        }
+      }
+      return created.track.id
     }
     this.#update(state, ev, ctx, obs)
     return state.track.id
@@ -428,8 +443,12 @@ export class Tracker {
     used: Set<string>,
   ): TrackState | null {
     const at = ctx.observedAt
+    // "Впали" in reply to a KAB thread often comes back typed as an explosion: an ending
+    // without a specific type ends the thread's object, whatever it is.
+    const ending = ev.action === 'lost' || ev.action === 'destroyed'
+    const anyType = ending && (ev.type === 'explosion' || ev.type === 'unknown')
     const compatible = (s: TrackState | undefined): s is TrackState =>
-      !!s && typesCompatible(s.track.type, ev.type)
+      !!s && (anyType ? s.track.type !== 'explosion' : typesCompatible(s.track.type, ev.type))
     // Explicit links (model id, reply chain) may wake a lost object up to two hours later.
     const usable = (s: TrackState | undefined): s is TrackState =>
       compatible(s) &&

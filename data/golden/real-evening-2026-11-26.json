@@ -106,5 +106,32 @@
         }
       ]
     }
+  },
+  {
+    "name": "'Чисто' in a reply ends the thread's object (real, 22:44)",
+    "text": "Чисто",
+    "parents": ["Пара мопедів на Долинське"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "action": "lost"
+        }
+      ]
+    }
+  },
+  {
+    "name": "direction word is not part of the place (real, 22:26)",
+    "text": "КАБи пролітають західніше Камʼянського\nПо руслу",
+    "parents": ["КАБи пролітають ТОТ Василівку"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "kab",
+          "location": "Кам'янське"
+        }
+      ]
+    }
   }
 ]

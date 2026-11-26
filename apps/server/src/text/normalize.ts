@@ -27,8 +27,27 @@ const CHAR_MAP: Record<string, string> = {
 const PREFIXES =
   /^(м\.|м |місто |город |г\. ?|смт\.? |с\. ?|село |селище |пос\. ?|н\.п\.? |нп |с-ще |сщ )/
 
+/** Latin letters that look Cyrillic; mixed-script names ("Комишувaха") come from the model. */
+const LOOKALIKE: Record<string, string> = {
+  a: 'а',
+  b: 'в',
+  c: 'с',
+  e: 'е',
+  h: 'н',
+  i: 'і',
+  k: 'к',
+  m: 'м',
+  o: 'о',
+  p: 'р',
+  t: 'т',
+  x: 'х',
+  y: 'у',
+}
+const CYRILLIC = /[а-яёіїєґ]/
+
 export function foldName(input: string): string {
   let s = input.toLowerCase().normalize('NFC').trim()
+  if (CYRILLIC.test(s)) s = s.replace(/[abcehikmoptxy]/g, (ch) => LOOKALIKE[ch] ?? ch)
   s = s.replace(PREFIXES, '')
   let out = ''
   for (const ch of s) {
@@ -48,11 +67,9 @@ export function foldName(input: string): string {
 }
 
 /** Inflectional endings in folded form (both languages), longest first. */
+// No "-ського"-style entries: they cut "ськ" off the genitive only ("Кам'янського" → "кам'ян",
+// matching the village Кам'яне) while the nominative keeps it ("Кам'янське" → "кам'янськ").
 const ENDINGS = [
-  'ского',
-  'скому',
-  'скою',
-  'скои',
   'ами',
   'ями',
   'ови',
@@ -61,6 +78,7 @@ const ENDINGS = [
   'ому',
   'ою',
   'ею',
+  'ои',
   'ах',
   'ях',
   'ам',

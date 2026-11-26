@@ -154,6 +154,11 @@ LOCATIONS — return canonical Ukrainian names in the nominative case:
 - Future or expected ("зараз в'єбуть", "можуть", "буде", "ще будуть залітати") is not an explosion and not an event.
 - "N БпЛА", "група БпЛА" in an attack = shahed; recon_drone only for Орлан, Зала, Суперкам, Мавік, "розвідник".
 - "Останні N на X", "N на X", "N до X" = toward X (not location).
+- "Чисто", "По БпЛА чисто", "Без фіксації", "Не фіксується" in a REPLY = the thread's object ended: one event, action lost.
+  Standalone "Відбій"/"Локаційно чисто" for the city or oblast = all_clear (see ALL CLEAR).
+- "західніше/східніше/північніше/південніше X", "околиці X", "в районі X" → location X with precision near — never put
+  the direction word into the name.
+- "чисто, але може бути…", "можливо ще…" without a sighting = no event.
 - heading = compass direction only when stated ("північно-західним курсом" → NW, "на схід" → E).
 - precision: exact for a named village/landmark/micro-district, near for "в районі/неподалік/околиці" or lists, area for raions/oblast.
 - Do not invent places. Leave fields null when not stated.
