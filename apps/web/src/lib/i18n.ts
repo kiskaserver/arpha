@@ -76,6 +76,9 @@ export const uk = {
   pushFailed: (d?: string) => `Не вдалося увімкнути сповіщення${d ? ` (${d})` : ''}`,
   pushSubscribeFailed: (d?: string) =>
     `Браузер не зміг підписатися на сповіщення${d ? ` (${d})` : ''}. Спробуйте Chrome; на iPhone — застосунок, доданий на головний екран.`,
+  /** AbortError in the installed app while the browser works: Android-side causes. */
+  pushStandaloneHelp:
+    'У браузері працює, а в застосунку ні? Налаштування телефону → Додатки → «Арфа» → Сповіщення — увімкнути, дозволити роботу у фоні й прибрати зі «сплячих» застосунків; вимкнути «Приватний DNS», AdGuard чи VPN; встановити застосунок саме через Chrome.',
   pushServerFailed: (code?: string) => `Сервер не прийняв підписку${code ? ` (код ${code})` : ''}`,
   install: 'Встановити застосунок',
   about: 'Про застосунок',

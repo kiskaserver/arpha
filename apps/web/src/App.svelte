@@ -265,7 +265,9 @@ async function togglePush(on: boolean) {
       unsupported: uk.pushUnsupported,
       denied: uk.pushDenied,
       unavailable: uk.pushUnavailable,
-      subscribe: uk.pushSubscribeFailed(res.detail),
+      subscribe: res.standalone
+        ? `${uk.pushSubscribeFailed(res.detail)} ${uk.pushStandaloneHelp}`
+        : uk.pushSubscribeFailed(res.detail),
       server: uk.pushServerFailed(res.detail),
       failed: uk.pushFailed(res.detail),
     }[res.reason]

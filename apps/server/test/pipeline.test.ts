@@ -293,6 +293,8 @@ describe('Pipeline', () => {
     expect(isDirectionWord('з південного заходу')).toBe(true)
     expect(isDirectionWord('Північне')).toBe(false)
     expect(isDirectionWord('Південноукраїнськ')).toBe(false)
+    expect(isDirectionWord('північне перетиння')).toBe(true)
+    expect(isDirectionWord('межа областей')).toBe(true)
   })
 
   it('keeps launch areas outside the oblast as the origin', async () => {

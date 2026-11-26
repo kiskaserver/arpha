@@ -1,0 +1,62 @@
+[
+  {
+    "name": "per-line list = three objects (real, 2026-11-26 09:32)",
+    "text": "1 Вільноуланівське\n1 до Українки\n1 до с. Шевченківське",
+    "parents": ["По цим\n1 Люцерна\n1 Михайлівка\n1 на Лежине"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "location": "Вільноуланівське"
+        },
+        {
+          "toward": "Українка"
+        },
+        {
+          "toward": "Шевченківське"
+        }
+      ]
+    }
+  },
+  {
+    "name": "village Шевченківське is not the city district",
+    "text": "На Шевченківське/Григорівське реактив",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "jet_drone",
+          "place": "Шевченківське"
+        }
+      ]
+    }
+  },
+  {
+    "name": "ДД is селище ДД, one object with Ліве",
+    "text": "Запоріжжя Ліве/ДД",
+    "parents": ["Реактивний Скворцова/ Заводи"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "jet_drone",
+          "action": "update",
+          "location": "Запоріжжя-Ліве"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Острів is Хортиця",
+    "text": "Над Островом\nКурс Хортицький",
+    "parents": ["Курс Острів"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "location": "Хортиця"
+        }
+      ]
+    }
+  }
+]

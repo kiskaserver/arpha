@@ -25,6 +25,7 @@ import {
   kfInit,
   kfPositionSigma,
   kfPredict,
+  kfSnapPosition,
   kfUpdatePosition,
   kfUpdateVelocity,
   kfVelocity,
@@ -61,6 +62,11 @@ export interface TrackState {
   removeAt: number | null
   /** Reported places in order — saved as a route when the track ends. */
   path: PathPoint[]
+  /**
+   * A report the object could not have reached from its last place. Ignored once; if the
+   * next report agrees with it rather than with the track, the track was what was wrong.
+   */
+  suspect?: PathPoint | null
 }
 
 export interface TrackerHooks {
@@ -105,6 +111,15 @@ const MERGE_HEADING_DEG = 60
 const MERGE_RECENT_MS = 4 * 60_000
 /** An origin this precise (a village, not an oblast or a sea) can stand in for a position. */
 const MAX_ORIGIN_AS_POSITION_KM = 5
+/** Explosion reports this close in space and time describe the same blast. */
+const SAME_BLAST_KM = 2
+const SAME_BLAST_MS = 15 * 60_000
+/** An unattached update this far from every object of its reply thread is a misread place. */
+const THREAD_RADIUS_KM = 40
+/** Reports this close to the forecast are blended; farther ones move the object there. */
+const SNAP_KM = 1.5
+/** Slack on the reachable distance: report lag, district size, the odd cut corner. */
+const REACH_SLACK_KM = 8
 /** Weapons whose "lost"/"впали" means they hit the ground. */
 const IMPACTING = new Set<ThreatType>(['kab', 'ballistic', 'cruise_missile', 'mlrs', 'artillery'])
 const frame = localFrame(ZAPORIZHZHIA)
@@ -323,6 +338,21 @@ export class Tracker {
 
     if (!state) {
       if (!obs && !ev.towardPlace) return null // nothing to show
+      // An "update" in a reply names objects of that thread. One that cannot be attached and
+      // lies far from all of them is a misread place ("ДД" → Дніпрорудне), not a new threat;
+      // a nearby one is a real extra object ("1 Заводи ⏎ 1 Аеропорт ⏎ 1 Українка").
+      const where = obs?.point ?? ev.towardPlace
+      const thread = ctx.parentTrackIds
+        .map((id) => this.#state(id)?.track.position)
+        .filter((p): p is LatLon => !!p)
+      if (
+        ev.action === 'update' &&
+        where &&
+        thread.length &&
+        thread.every((p) => haversineKm(p, where) > THREAD_RADIUS_KM)
+      ) {
+        return null
+      }
       return this.#create(ev, ctx, obs).track.id
     }
     this.#update(state, ev, ctx, obs)
@@ -362,6 +392,21 @@ export class Tracker {
     const nearby = (s: TrackState): boolean =>
       s.track.status === 'active' ||
       (s.track.status === 'lost' && at - s.track.updatedAt <= SPATIAL_REVIVE_MS)
+
+    // A blast is a point: only a report of the same spot minutes later is the same one
+    // (separate explosions at Кар'єри, Мокрянка and Космос are not a flight path).
+    if (ev.type === 'explosion' && ev.action !== 'lost' && ev.action !== 'destroyed') {
+      if (!point) return null
+      return (
+        [...this.#states.values()].find(
+          (s) =>
+            s.track.type === 'explosion' &&
+            s.track.position !== null &&
+            haversineKm(s.track.position, point) <= SAME_BLAST_KM &&
+            at - s.track.updatedAt <= SAME_BLAST_MS,
+        ) ?? null
+      )
+    }
 
     // 1. The model linked it explicitly.
     if (ev.track_id) {
@@ -431,6 +476,35 @@ export class Tracker {
     return { point, sigma: kfPositionSigma(kf) }
   }
 
+  /**
+   * The observation, or null when the object could not have got there since its last
+   * report. A second report agreeing with a rejected one wins: the track had it wrong.
+   */
+  #plausible(
+    state: TrackState,
+    obs: Observation,
+    at: number,
+    maxSpeedKmh: number,
+  ): Observation | null {
+    const last = state.path.at(-1)
+    const reach = (from: PathPoint) =>
+      (maxSpeedKmh / 60) * Math.max(0, (at - from.at) / 60_000) * 1.5 + REACH_SLACK_KM
+    if (!last || haversineKm(last, obs.point) <= reach(last)) {
+      state.suspect = null
+      return obs
+    }
+    const suspect = state.suspect
+    if (suspect && haversineKm(suspect, obs.point) <= reach(suspect)) {
+      // Two reports agree with each other, not with us: start again from them.
+      state.suspect = null
+      state.kf = null
+      state.path = [suspect]
+      return obs
+    }
+    state.suspect = { lat: obs.point.lat, lon: obs.point.lon, at, place: obs.name }
+    return null
+  }
+
   #courseHint(ev: ResolvedEvent, from: LatLon | null): number | null {
     if (ev.heading) return compassToBearing(ev.heading)
     if (ev.fromPlace && ev.locationPlace && haversineKm(ev.fromPlace, ev.locationPlace) > 3) {
@@ -482,7 +556,13 @@ export class Tracker {
     return state
   }
 
-  #update(state: TrackState, ev: ResolvedEvent, ctx: ApplyContext, obs: Observation | null): void {
+  #update(
+    state: TrackState,
+    ev: ResolvedEvent,
+    ctx: ApplyContext,
+    reported: Observation | null,
+  ): void {
+    let obs = reported
     if (state.track.status === 'lost') {
       // It reappeared: same object, same history, fresh filter from this report.
       state.removeAt = null
@@ -498,6 +578,10 @@ export class Tracker {
     const maxSpeed = Math.min(maxKmh(type, model), speed * SPEED_CAP_FACTOR)
     const target = toTarget(ev.towardPlace) ?? state.track.target
     let reaimed = false
+    // "ДД" read as Дніпрорудне, "Острів" as Остриківка: 60 km away twenty seconds after the
+    // last report. Physically impossible places are not where it is.
+    if (obs && profile.moving)
+      obs = this.#plausible(state, obs, ctx.observedAt, maxKmh(type, model))
 
     if (obs && profile.moving) {
       if (!state.kf) {
@@ -519,6 +603,11 @@ export class Tracker {
           kf = kfInit(frame.toXY(obs.point), obs.sigma, vel, speed / 60)
         } else {
           kf = updated
+          // The report is where it is now; the filter only has to work out the course.
+          const p = frame.toLatLon(kf.x[0], kf.x[1])
+          if (haversineKm(p, obs.point) > SNAP_KM) {
+            kf = kfSnapPosition(kf, frame.toXY(obs.point), Math.min(obs.sigma, 3))
+          }
         }
         const course = this.#courseHint(ev, frame.toLatLon(kf.x[0], kf.x[1]))
         if (course !== null) {

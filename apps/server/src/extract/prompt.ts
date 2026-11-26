@@ -135,19 +135,22 @@ LOCATIONS — return canonical Ukrainian names in the nominative case:
 - Zaporizhzhia micro-districts and slang → canonical names:
   Шевчік/Шевчик/"1-2 Шевчік" → "Шевченківський район"; Космос → "Космічний"; Заводи → "Заводський район";
   Ліве → "Запоріжжя-Ліве"; ВХ → "Верхня Хортиця"; Осипок → "Осипенківський"; Бородок → "Бородинський";
-  Кічкас → "Павло-Кічкас"; МК → "Малокатеринівка"; Дослідна → "Дослідна Станція"; мости → "Мости Преображенського"; ГЕС/гребля → "ДніпроГЕС";
+  Кічкас → "Павло-Кічкас"; МК → "Малокатеринівка"; ДД → "Селище ДД"; Острів → "Хортиця";
+  Дослідна → "Дослідна Станція"; мости → "Мости Преображенського"; ГЕС/гребля → "ДніпроГЕС";
   центр → "Центр міста"; аеропорт → "Аеропорт Запоріжжя"; Бабурка, Соцмісто, Півколо, Підпорожнянка, Великий Луг,
   Хортиця, Хортицький район, Леваневського, Мокрянка, Південний — as written, nominative.
 - Regions: "на Дніпропетровщину" → toward "Дніпропетровська область".
 - Ballistic/missiles: put the launch direction in from ("з Криму", "з Таганрогу", "з півдня" → heading S is the origin side: use from "Крим", "Азовське море", "Донецька область" as stated).
-- When a post lists alternatives ("Піски/Дослідна/Космос", "МК/Кушугум/Балабине"), use the first named place as location (precision "near").
+- When a post lists alternatives ("Піски/Дослідна/Космос", "МК/Кушугум/Балабине"), use the first named place as location (precision "near"). Alternatives joined by "/" are ONE object, never several events.
+- Per-line lists ("1 Заводи ⏎ 1 до Аеропорту ⏎ 1 Українка", "По реактивних: 1 … 1 … 1 …") are SEPARATE objects: exactly one event per line, in order. A bare place on a line = location; "до X"/"на X" on a line = toward X.
+- Шевченківське (a village east of the city, next to Григорівське) is NOT Шевченківський район (the city district, "Шевчик").
 - heading = compass direction only when stated ("північно-західним курсом" → NW, "на схід" → E).
 - precision: exact for a named village/landmark/micro-district, near for "в районі/неподалік/околиці" or lists, area for raions/oblast.
 - Do not invent places. Leave fields null when not stated.
 - location is only a place THIS post names as the current position. A reply that only gives a new course
   ("Довернув на X", "Далі курсом на X", "На X") has location null and toward X — never repeat the parent's place.
-- A local name you do not recognise: return it as written, in the nominative ("Гортоп", "Кар'єри"). Never
-  replace it with "Запоріжжя".
+- A local name or abbreviation you do not recognise: return it exactly as written ("Гортоп", "Кар'єри", "ДД").
+  Never expand it into a name you made up, and never replace it with "Запоріжжя".
 - "з півночі", "з півдня", "зі сходу", "з заходу" are directions, not places: heading S, N, W, E; from null.
 - ALTITUDE: "Висота 700", "500м висота", "знизився до 600м" → altitude_m. A reply with only an altitude is an
   update of the same object with altitude_m set.
@@ -187,7 +190,10 @@ EXAMPLES (post → report; fields not shown are null, count 1, action new, confi
 18. "Ранкове зведення: за добу 12 обстрілів по області" → relevant:false (a past summary), events []
 19. Reply to track t4 ("Реактив над Вільнянськом"): "Довернув на Новософіївку" → [{type:jet_drone, action:update, toward:"Новософіївка", track_id:"t4"}] (location null)
 20. Reply to track t4: "Ліве над вами ⏎ Висота 700" (⏎ = a line break) → [{type:jet_drone, action:update, location:"Запоріжжя-Ліве", altitude_m:700, track_id:"t4"}]
-21. "Новий реактив з півночі до Новомиколаївки" → [{type:jet_drone, heading:"S", toward:"Новомиколаївка"}]`
+21. "Новий реактив з півночі до Новомиколаївки" → [{type:jet_drone, heading:"S", toward:"Новомиколаївка"}]
+22. Reply to a post about three jets: "1 Ясна Поляна ⏎ 1 до Тарасівки ⏎ 1 до Широкого" → three events:
+   [{type:jet_drone, action:update, location:"Ясна Поляна"}, {type:jet_drone, action:update, toward:"Тарасівка"}, {type:jet_drone, action:update, toward:"Широке"}]
+23. Reply to track t5: "Скворцова/ДД" → one event [{type:jet_drone, action:update, location:"Скворцова", precision:near, track_id:"t5"}]`
 
 function formatAge(ms: number, now: number): string {
   const min = Math.max(0, Math.round((now - ms) / 60_000))

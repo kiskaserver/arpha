@@ -285,15 +285,41 @@ describe('Tracker', () => {
     expect(tracker.tracks().every((t) => t.status === 'lost')).toBe(true)
   })
 
-  it('re-seeds on a wildly inconsistent report linked by id', () => {
+  it('ignores one impossible report, but believes two that agree with each other', () => {
     const { tracker } = setup()
     const [a] = tracker.apply([resolved({ location: 'Оріхів' })], ctx(0))
+    const far = () =>
+      resolved({ location: 'Бердянськ', track_id: a!, action: 'update', precision: 'exact' })
+    // 150 km in a minute for a shahed: a misread place, not a flight.
+    tracker.apply([far()], ctx(1))
+    expect(tracker.get(a!)!.placeName).toBe('Оріхів')
+    // A second report there: the track was what was wrong.
+    tracker.apply([far()], ctx(2))
+    const t = tracker.get(a!)!
+    expect(t.placeName).toBe('Бердянськ')
+    expect(haversineKm(t.position!, gazetteer().lookup('Бердянськ')!)).toBeLessThan(5)
+  })
+
+  it('a report puts the object there instead of blending it with the forecast', () => {
+    const { tracker } = setup()
+    const [a] = tracker.apply(
+      [resolved({ type: 'jet_drone', location: 'Вільнянськ', heading: 'S' })],
+      ctx(0),
+    )
+    // A minute later the channel names a place several km off where the forecast had it.
     tracker.apply(
-      [resolved({ location: 'Бердянськ', track_id: a!, action: 'update', precision: 'exact' })],
-      ctx(1),
+      [
+        resolved({
+          type: 'jet_drone',
+          action: 'update',
+          location: 'Аеропорт Запоріжжя',
+          precision: 'near',
+        }),
+      ],
+      ctx(1, { parentTrackIds: [a!] }),
     )
     const t = tracker.get(a!)!
-    expect(haversineKm(t.position!, gazetteer().lookup('Бердянськ')!)).toBeLessThan(5)
+    expect(haversineKm(t.position!, gazetteer().lookup('Аеропорт Запоріжжя')!)).toBeLessThan(1.6)
   })
 
   it('two events in one message never collapse onto the same track', () => {
@@ -486,10 +512,11 @@ describe('Tracker', () => {
   it('after a jump it keeps flying the way it evidently went', () => {
     const { tracker } = setup()
     const [id] = tracker.apply([resolved({ type: 'shahed', location: 'Оріхів' })], ctx(0))
-    // 60+ km north in a few minutes: inconsistent, so the filter is re-seeded…
+    // 60+ km north after a 12-minute silence: reachable, but far off the forecast, so the
+    // filter is re-seeded…
     tracker.apply(
       [resolved({ type: 'shahed', action: 'update', location: 'Запоріжжя' })],
-      ctx(3, { parentTrackIds: [id!] }),
+      ctx(12, { parentTrackIds: [id!] }),
     )
     const t = tracker.get(id!)!
     expect(t.placeName).toBe('Запоріжжя')
@@ -508,5 +535,43 @@ describe('Tracker', () => {
     expect(t.position).toBeNull()
     expect(t.origin?.name).toBe('Дніпропетровська область')
     expect(t.trail ?? []).toEqual([])
+  })
+
+  it('separate blasts are separate points; the same spot minutes later is the same one', () => {
+    const { tracker } = setup()
+    const [a] = tracker.apply([resolved({ type: 'explosion', location: 'Космічний' })], ctx(0))
+    const [b] = tracker.apply([resolved({ type: 'explosion', location: "Кар'єри" })], ctx(1))
+    const [c] = tracker.apply([resolved({ type: 'explosion', location: 'Космічний' })], ctx(3))
+    expect(b).not.toBe(a)
+    expect(c).toBe(a)
+    expect(tracker.get(a!)!.trail!.map((p) => p.name)).toEqual(['Космічний'])
+  })
+
+  it('in a reply thread: a far unattached update is a misread place, a near one a real extra object', () => {
+    const { tracker } = setup()
+    const [a] = tracker.apply(
+      [resolved({ type: 'jet_drone', location: 'Запоріжжя-Ліве', heading: 'W' })],
+      ctx(0),
+    )
+    const reply = ctx(1, { parentTrackIds: [a!] })
+    // "Запоріжжя Ліве/ДД" split by the model, ДД misread as a town 60 km away.
+    const far = tracker.apply(
+      [
+        resolved({ type: 'jet_drone', action: 'update', location: 'Запоріжжя-Ліве' }),
+        resolved({ type: 'jet_drone', action: 'update', location: 'Дніпрорудне' }),
+      ],
+      reply,
+    )
+    expect(far[1]).toBeNull()
+    // "1 Заводи ⏎ 1 Аеропорт": the second line is another jet nearby.
+    const near = tracker.apply(
+      [
+        resolved({ type: 'jet_drone', action: 'update', location: 'Заводський район' }),
+        resolved({ type: 'jet_drone', action: 'update', location: 'Аеропорт Запоріжжя' }),
+      ],
+      ctx(2, { parentTrackIds: [a!] }),
+    )
+    expect(near[1]).not.toBeNull()
+    expect(near[1]).not.toBe(a)
   })
 })

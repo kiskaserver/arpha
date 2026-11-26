@@ -59,7 +59,9 @@ const MAX_ORIGIN_KM = 1500
 const DIRECTION_TOKEN = new RegExp(
   '^(?:з|зі|із|від|на|у|в|до|бік|напрям(?:ок|ку|ки|ків|и|ах|ами)?|' +
     'північ|півночі|південь|півдня|півдні|схід|сходу|сході|захід|заходу|заході|' +
-    '(?:північн|південн|східн|західн)(?:ий|ого|ому|им|ім|і|их|ими)|північно|південно)$',
+    '(?:північн|південн|східн|західн)(?:ий|ого|ому|им|ім|і|их|ими|е|а|ої|у)|північно|південно|' +
+    // "північний перетин" / "межа областей": the oblast border, not a place.
+    'перетин|перетину|перетині|перетиння|межа|межі|областей)$',
   'u',
 )
 const DIRECTION_NAMED_PLACE = /^(?:північне|південне|східне|західне)$/u
@@ -200,7 +202,9 @@ export class Pipeline {
       // An edited post keeps talking about the tracks its first version created
       // (a replay's stored ids belong to the previous run's tracker, not this one).
       const own = cached ? [] : (existing?.trackIds ?? [])
-      const parentTrackIds = [...own, ...(parents[0]?.trackIds ?? [])]
+      // The nearest post up the chain that is about a tracked object ("БШ" in between has none).
+      const chain = parents.find((p) => p.trackIds.length)?.trackIds ?? []
+      const parentTrackIds = [...own, ...chain]
       // The model copies places from anywhere up the reply chain, not only the parent.
       const parentPlaces = parents.flatMap((p) => p.places ?? [])
       const resolved = extraction.events.map((ev) =>

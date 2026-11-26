@@ -1,0 +1,982 @@
+[
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187985,
+    "date": 1795672126000,
+    "replyToId": null,
+    "text": "Реактивний з Донецька на Гуляйполе/Пологи",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": "geran_3",
+          "count": null,
+          "action": "new",
+          "location": null,
+          "precision": "near",
+          "from": "Донецька область",
+          "toward": "Гуляйполе",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187987,
+    "date": 1795672702000,
+    "replyToId": 187985,
+    "text": "Від Гуляйполе курсом на Микільське",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Гуляйполе",
+          "precision": null,
+          "from": null,
+          "toward": "Микільське",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94815,
+    "date": 1795672810000,
+    "replyToId": null,
+    "text": "Реактив на Микільське зі Сходу",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Микільське",
+          "heading": "E",
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187989,
+    "date": 1795672864000,
+    "replyToId": 187987,
+    "text": "Далі до Новорозівки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Новорозівка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94816,
+    "date": 1795672893000,
+    "replyToId": 94815,
+    "text": "Далі в бік Новорозівки/Новотроїцьке",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Новорозівка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187990,
+    "date": 1795672995000,
+    "replyToId": null,
+    "text": "Ще один реактивний від Гуляйполе вздовж ЛБЗ курсом до Михайлівки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "new",
+          "location": null,
+          "precision": null,
+          "from": "Гуляйполе",
+          "toward": "Михайлівка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187991,
+    "date": 1795673056000,
+    "replyToId": 187989,
+    "text": "Цей реактивний наразі курс до Калинівки \n\nЩе один БпЛА вздовж північного перетину курс західний",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Калинівка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        },
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "new",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": "W",
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.6
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94817,
+    "date": 1795673101000,
+    "replyToId": 94816,
+    "text": "Полетів до Бекарівки/Купріянівки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": "near",
+          "from": null,
+          "toward": "Бекарівка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187992,
+    "date": 1795673153000,
+    "replyToId": 187991,
+    "text": "Від Калинівки до Купріянівки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Калинівка",
+          "precision": null,
+          "from": null,
+          "toward": "Купріянівка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        },
+        {
+          "type": "unknown",
+          "model": null,
+          "count": null,
+          "action": "new",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": "W",
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.6
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187994,
+    "date": 1795673242000,
+    "replyToId": 187992,
+    "text": "Завертає на Вільне",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Вільне",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        },
+        {
+          "type": "unknown",
+          "model": null,
+          "count": null,
+          "action": "new",
+          "location": null,
+          "precision": "area",
+          "from": null,
+          "toward": null,
+          "heading": "W",
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.6
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187996,
+    "date": 1795673289000,
+    "replyToId": 187991,
+    "text": "Цей продовжує рух західним курсом повз Петро Свистунове",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Петро Свистунове",
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": "W",
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 187997,
+    "date": 1795673353000,
+    "replyToId": 187994,
+    "text": "Реактивний до Юліївки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Юліївка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        },
+        {
+          "type": "unknown",
+          "model": null,
+          "count": null,
+          "action": "new",
+          "location": null,
+          "precision": "area",
+          "from": null,
+          "toward": null,
+          "heading": "W",
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.6
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94818,
+    "date": 1795673397000,
+    "replyToId": 94817,
+    "text": "Розвернувся на Юльївку",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Юліївка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188000,
+    "date": 1795673619000,
+    "replyToId": 187997,
+    "text": "Реактивний розвернувся до Жовтої Кручи",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Жовта Круча",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188001,
+    "date": 1795673727000,
+    "replyToId": 188000,
+    "text": "Тримає курс до Трудооленівки/ Миролюбівки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": "near",
+          "from": null,
+          "toward": "Трудооленівка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188002,
+    "date": 1795673797000,
+    "replyToId": 188001,
+    "text": "Завертає Благовіщенське до Купріянівки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Благовіщенське",
+          "precision": null,
+          "from": null,
+          "toward": "Купріянівка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188004,
+    "date": 1795673847000,
+    "replyToId": 188002,
+    "text": "Реактивний до Яковлеве \n\nВільнянськ уважно",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Яковлеве",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94822,
+    "date": 1795673854000,
+    "replyToId": 94821,
+    "text": "Розвернувся в бік Купріянівки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Купріянівка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188006,
+    "date": 1795673901000,
+    "replyToId": 188004,
+    "text": "Реактивний Дружелюбівка",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Дружелюбівка",
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94824,
+    "date": 1795673913000,
+    "replyToId": 94822,
+    "text": "Реактив на Матвіївку",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Матвіївка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188007,
+    "date": 1795673941000,
+    "replyToId": 188006,
+    "text": "Курс Аеропорт/Матвіївка реактивний",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Аеропорт Запоріжжя",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        },
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Матвіївка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188008,
+    "date": 1795673972000,
+    "replyToId": 188007,
+    "text": "До Матвіївки",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Матвіївка",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188010,
+    "date": 1795674059000,
+    "replyToId": 188008,
+    "text": "Реактивний Скворцова/ Заводи",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Скворцова",
+          "precision": "near",
+          "from": null,
+          "toward": null,
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188011,
+    "date": 1795674079000,
+    "replyToId": 188010,
+    "text": "Запоріжжя Ліве/ДД",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Запоріжжя-Ліве",
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        },
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Дніпроград",
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94825,
+    "date": 1795674091000,
+    "replyToId": 94824,
+    "text": "Курсом на Заводи",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Заводський район",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188013,
+    "date": 1795674125000,
+    "replyToId": 188011,
+    "text": "На центр",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Центр міста",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94827,
+    "date": 1795674142000,
+    "replyToId": 94825,
+    "text": "Реактив на центр",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Центр міста",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188015,
+    "date": 1795674177000,
+    "replyToId": 188014,
+    "text": "Курс Острів",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": "Острів",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94828,
+    "date": 1795674191000,
+    "replyToId": 94827,
+    "text": "Летить на Острів/Мости",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": "near",
+          "from": null,
+          "toward": "Острів",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188016,
+    "date": 1795674217000,
+    "replyToId": 188015,
+    "text": "Над Островом \nКурс Хортицький",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": "Острів",
+          "precision": null,
+          "from": null,
+          "toward": "Хортицький район",
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "channel": "gnilayachereha",
+    "id": 94829,
+    "date": 1795674223000,
+    "replyToId": 94828,
+    "text": "Чули його",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "update",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.6
+        }
+      ]
+    }
+  },
+  {
+    "channel": "eyes_everywhere_ua",
+    "id": 188017,
+    "date": 1795674276000,
+    "replyToId": 188016,
+    "text": "Мінус🫡",
+    "extraction": {
+      "relevant": true,
+      "all_clear": false,
+      "closures": [],
+      "events": [
+        {
+          "type": "jet_drone",
+          "model": null,
+          "count": null,
+          "action": "destroyed",
+          "location": null,
+          "precision": null,
+          "from": null,
+          "toward": null,
+          "heading": null,
+          "track_id": null,
+          "altitude_m": null,
+          "confidence": 0.9
+        }
+      ]
+    }
+  }
+]

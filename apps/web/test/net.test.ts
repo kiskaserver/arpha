@@ -102,6 +102,7 @@ describe('push', () => {
         } as unknown as ServiceWorkerContainer,
         Notification: { requestPermission: async () => 'granted' as NotificationPermission },
         hasPushManager: true,
+        sleep: async () => {},
         ...overrides,
       },
     }
@@ -230,7 +231,16 @@ describe('push', () => {
       ok: false,
       reason: 'subscribe',
       detail: 'AbortError',
+      standalone: false,
     })
+    // In the installed app the user also gets the Android-side checklist.
+    const app = env({ standalone: true })
+    app.pushManager.subscribe.mockRejectedValue(new DOMException('x', 'AbortError'))
+    expect(await enablePush(prefs, app.env)).toMatchObject({
+      reason: 'subscribe',
+      standalone: true,
+    })
+    expect(uk.pushStandaloneHelp).toContain('Приватний DNS')
     warn.mockRestore()
   })
 

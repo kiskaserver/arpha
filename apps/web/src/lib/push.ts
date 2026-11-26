@@ -8,6 +8,8 @@ export type PushResult =
       reason: 'unsupported' | 'denied' | 'unavailable' | 'subscribe' | 'server' | 'failed'
       /** Error name / HTTP status, shown so a user can report what went wrong. */
       detail?: string
+      /** It failed in the installed app (home-screen PWA), not in a browser tab. */
+      standalone?: boolean
     }
 
 export interface PushPrefs {
@@ -23,6 +25,10 @@ export interface PushEnv {
   serviceWorker?: ServiceWorkerContainer | undefined
   Notification?: { requestPermission(): Promise<NotificationPermission> } | undefined
   hasPushManager: boolean
+  /** Pause before retrying a failed subscribe (FCM needs a moment after an unsubscribe). */
+  sleep?: (ms: number) => Promise<void>
+  /** Running as the installed app (home-screen PWA). */
+  standalone?: boolean
 }
 
 const defaultEnv = (): PushEnv => ({
@@ -30,6 +36,8 @@ const defaultEnv = (): PushEnv => ({
   serviceWorker: globalThis.navigator?.serviceWorker,
   Notification: globalThis.Notification,
   hasPushManager: typeof globalThis.PushManager !== 'undefined',
+  sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+  standalone: globalThis.matchMedia?.('(display-mode: standalone)').matches ?? false,
 })
 
 export function pushSupported(env: PushEnv = defaultEnv()): boolean {
@@ -76,11 +84,17 @@ export async function enablePush(
       } catch {
         // A stale registration (InvalidStateError) or a push-service hiccup: clear, retry once.
         await (await reg.pushManager.getSubscription())?.unsubscribe().catch(() => false)
+        await env.sleep?.(1500)
         try {
           sub = await subscribe()
         } catch (err) {
           console.warn('push subscribe failed', err)
-          return { ok: false, reason: 'subscribe', detail: describe(err) }
+          return {
+            ok: false,
+            reason: 'subscribe',
+            detail: describe(err),
+            standalone: env.standalone === true,
+          }
         }
       }
     }

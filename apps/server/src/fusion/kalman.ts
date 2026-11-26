@@ -118,6 +118,24 @@ export function kfUpdateVelocity(s: KalmanState, z: Vec2, sigma: number) {
   return update(s, [2, 3], z, sigma)
 }
 
+/**
+ * Put the position on a report outright, keeping the velocity. A channel naming a
+ * district says where the object is now; blending it with a forecast left the icon
+ * kilometres behind for minutes after a turn.
+ */
+export function kfSnapPosition(s: KalmanState, z: Vec2, sigma: number): KalmanState {
+  const P = [...s.P]
+  const p2 = sigma * sigma
+  for (const i of [0, 1]) {
+    for (let c = 0; c < 4; c++) {
+      P[i * 4 + c] = 0
+      P[c * 4 + i] = 0
+    }
+    P[i * 4 + i] = p2
+  }
+  return { x: [z.x, z.y, s.x[2], s.x[3]], P }
+}
+
 /** RMS position sigma, km. */
 export function kfPositionSigma(s: KalmanState): number {
   return Math.sqrt((at(s.P, 0, 0) + at(s.P, 1, 1)) / 2)

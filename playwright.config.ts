@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const PORT = Number(process.env.E2E_PORT ?? 8123)
+// 4173: outside the port ranges Windows reserves for Hyper-V/WSL (e.g. 8081–8180).
+const PORT = Number(process.env.E2E_PORT ?? 4173)
 
 /**
  * End-to-end tests run the real production build (server + PWA) in DEMO_MODE,

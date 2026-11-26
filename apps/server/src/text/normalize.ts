@@ -35,11 +35,16 @@ export function foldName(input: string): string {
     const mapped = CHAR_MAP[ch]
     out += mapped ?? ch
   }
-  return out
-    .replace(/[-–—_.]+/g, ' ')
-    .replace(/(.)\1+/g, '$1') // жж → ж, нн → н (Ukrainian gemination)
-    .replace(/\s+/g, ' ')
-    .trim()
+  return (
+    out
+      .replace(/[-–—_.]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      // жж → ж, нн → н (Ukrainian gemination) — but not in abbreviations: "ДД" stays "дд".
+      .map((w) => (w.length > 3 ? w.replace(/(.)\1+/g, '$1') : w))
+      .join(' ')
+  )
 }
 
 /** Inflectional endings in folded form (both languages), longest first. */
