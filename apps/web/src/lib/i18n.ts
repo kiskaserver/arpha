@@ -56,7 +56,7 @@ export const uk = {
   radius: 'Радіус небезпеки',
   radiusDefault: 'Зона за замовчуванням',
   pointZone: 'Зона',
-  zoneDefault: (km: number) => `як за замовчуванням (${km} км)`,
+  zoneDefault: (km: number) => `типово, ${km} км`,
   km: 'км',
   kmh: 'км/год',
   theme: 'Тема',
@@ -73,7 +73,10 @@ export const uk = {
     'Цей браузер не підтримує push. На iPhone спершу додайте застосунок на головний екран.',
   pushDenied: 'Сповіщення заборонено в налаштуваннях браузера',
   pushUnavailable: 'Сервер не налаштований для сповіщень',
-  pushFailed: 'Не вдалося увімкнути сповіщення',
+  pushFailed: (d?: string) => `Не вдалося увімкнути сповіщення${d ? ` (${d})` : ''}`,
+  pushSubscribeFailed: (d?: string) =>
+    `Браузер не зміг підписатися на сповіщення${d ? ` (${d})` : ''}. Спробуйте Chrome; на iPhone — застосунок, доданий на головний екран.`,
+  pushServerFailed: (code?: string) => `Сервер не прийняв підписку${code ? ` (код ${code})` : ''}`,
   install: 'Встановити застосунок',
   about: 'Про застосунок',
   disclaimer:

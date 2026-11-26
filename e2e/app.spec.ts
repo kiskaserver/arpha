@@ -207,6 +207,28 @@ test.describe('Арфа', () => {
     expect(panel.x + panel.width).toBeLessThanOrEqual(vp.width + 1)
   })
 
+  test('settings with several places fit the screen (no sideways stretch)', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'arpha:settings:v1',
+        JSON.stringify({
+          points: [
+            { id: 'a', name: 'Дім біля Дніпровського парку', lat: 47.78, lon: 35.22, radiusKm: 5 },
+            { id: 'b', name: 'Робота на Бородинському', lat: 47.89, lon: 35.07 },
+          ],
+        }),
+      )
+    })
+    await page.goto('/')
+    await page.getByTestId('open-settings').click()
+    const dialog = page.getByTestId('settings')
+    await expect(dialog.getByTestId('point-zone')).toHaveCount(2)
+    const fits = await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)
+    expect(fits).toBe(true)
+    const box = (await dialog.boundingBox())!
+    expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1)
+  })
+
   test('is installable: manifest, icons and service worker', async ({
     page,
     request,

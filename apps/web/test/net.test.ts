@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { uk } from '../src/lib/i18n'
 import { disablePush, enablePush, type PushEnv, pushSupported } from '../src/lib/push'
 import { LiveStream } from '../src/lib/stream'
 
@@ -168,13 +169,69 @@ describe('push', () => {
               : new Response('', { status: 400 })) as typeof fetch,
         }).env,
       ),
-    ).toEqual({ ok: false, reason: 'failed' })
+    ).toEqual({ ok: false, reason: 'server', detail: '400' })
     expect(
       await enablePush(
         prefs,
-        env({ fetch: (async () => Promise.reject(new Error('net'))) as typeof fetch }).env,
+        env({ fetch: (async () => Promise.reject(new TypeError('net'))) as typeof fetch }).env,
       ),
-    ).toEqual({ ok: false, reason: 'failed' })
+    ).toEqual({ ok: false, reason: 'failed', detail: 'TypeError' })
+  })
+
+  it('replaces a subscription made with another server key', async () => {
+    const old = {
+      ...sub,
+      options: { applicationServerKey: new Uint8Array([9, 9]).buffer },
+      unsubscribe: vi.fn(async () => true),
+    }
+    const e = env({}, old)
+    expect(await enablePush(prefs, e.env)).toEqual({ ok: true })
+    expect(old.unsubscribe).toHaveBeenCalled()
+    expect(e.pushManager.subscribe).toHaveBeenCalledOnce()
+  })
+
+  it('a failing unsubscribe of the stale subscription does not block a new one', async () => {
+    const old = {
+      ...sub,
+      options: { applicationServerKey: new Uint8Array([1]).buffer },
+      unsubscribe: vi.fn(async () => Promise.reject(new Error('gone'))),
+    }
+    const e = env({}, old)
+    e.pushManager.subscribe.mockRejectedValueOnce(new DOMException('stale', 'InvalidStateError'))
+    expect(await enablePush(prefs, e.env)).toEqual({ ok: true })
+    expect(e.pushManager.subscribe).toHaveBeenCalledTimes(2)
+  })
+
+  it('explains each failure in Ukrainian, with the error to report', () => {
+    expect(uk.pushSubscribeFailed('AbortError')).toContain('(AbortError)')
+    expect(uk.pushSubscribeFailed()).not.toContain('(')
+    expect(uk.pushServerFailed('400')).toBe('Сервер не прийняв підписку (код 400)')
+    expect(uk.pushServerFailed()).toBe('Сервер не прийняв підписку')
+    expect(uk.pushFailed('TypeError')).toBe('Не вдалося увімкнути сповіщення (TypeError)')
+    expect(uk.pushFailed()).toBe('Не вдалося увімкнути сповіщення')
+    expect(uk.zoneDefault(15)).toBe('типово, 15 км')
+    expect(uk.quiet(12)).toBe('немає даних 12 хв')
+  })
+
+  it('retries once after a push-service error, then reports it', async () => {
+    const flaky = env()
+    flaky.pushManager.subscribe.mockRejectedValueOnce(
+      new DOMException('push service error', 'AbortError'),
+    )
+    expect(await enablePush(prefs, flaky.env)).toEqual({ ok: true })
+    expect(flaky.pushManager.subscribe).toHaveBeenCalledTimes(2)
+
+    const broken = env()
+    broken.pushManager.subscribe.mockRejectedValue(
+      new DOMException('Registration failed - push service not available', 'AbortError'),
+    )
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(await enablePush(prefs, broken.env)).toEqual({
+      ok: false,
+      reason: 'subscribe',
+      detail: 'AbortError',
+    })
+    warn.mockRestore()
   })
 
   it('unsubscribes on the server and locally', async () => {

@@ -187,7 +187,13 @@ export function createApp(d: AppDeps): Hono {
   app.post('/api/push/subscribe', bodyLimit({ maxSize: 8 * 1024 }), async (c) => {
     if (!d.push) return c.json({ error: 'push disabled' }, 404)
     const parsed = pushSubscriptionSchema.safeParse(await c.req.json().catch(() => null))
-    if (!parsed.success) return c.json({ error: 'invalid subscription' }, 400)
+    if (!parsed.success) {
+      d.logger.warn(
+        { issues: parsed.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.message}`) },
+        'push subscription rejected',
+      )
+      return c.json({ error: 'invalid subscription' }, 400)
+    }
     const sub = d.push.service.subscribe(parsed.data)
     return c.json(
       { ok: true, points: sub.points.map((p) => ({ name: p.name, featureIds: p.featureIds })) },

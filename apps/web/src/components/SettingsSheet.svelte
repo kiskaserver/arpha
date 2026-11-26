@@ -288,6 +288,7 @@ $effect(() => {
     background: var(--panel-solid);
     color: var(--text);
     box-shadow: var(--shadow-up);
+    overflow-x: hidden;
   }
   .sheet::backdrop {
     background: rgb(0 0 0 / 0.45);
@@ -382,14 +383,15 @@ $effect(() => {
   }
   .points li {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 6px 8px;
     padding: 4px 4px 4px 8px;
     border-radius: 10px;
     background: var(--chip);
   }
   .points input {
-    flex: 1;
+    flex: 1 1 40%;
     min-width: 0;
     border: 0;
     background: none;
@@ -401,6 +403,25 @@ $effect(() => {
     font-size: 12px;
     color: var(--muted);
     font-variant-numeric: tabular-nums;
+  }
+  .points select {
+    min-height: 32px;
+    max-width: 100%;
+    padding: 4px 8px;
+    font-weight: 500;
+    font-size: 14px;
+  }
+  /* Phones: name on its own line, zone and "Видалити" below it. */
+  @media (max-width: 480px) {
+    .points input {
+      flex-basis: 100%;
+    }
+    .coords {
+      display: none;
+    }
+    .points select {
+      flex: 1;
+    }
   }
   .sound {
     display: grid;
