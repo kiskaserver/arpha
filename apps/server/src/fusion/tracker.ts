@@ -202,8 +202,25 @@ export class Tracker {
     const used = new Set<string>()
     const courseOnly = (e: ResolvedEvent) =>
       e.action === 'update' && !e.locationPlace && e.count === null
+    // "Всі до Хортицького" came back as six "lost" events, one per active threat of every
+    // channel. A post ends the objects of its own reply thread; outside a thread, at most
+    // one object on the model's say-so alone. Naming where it fell still ends it.
+    const thread = new Set(ctx.parentTrackIds.map((id) => this.#state(id)?.track.id))
+    let endedOnSaySo = false
+    const mayEnd = (e: ResolvedEvent): boolean => {
+      if ((e.action !== 'lost' && e.action !== 'destroyed') || e.locationPlace) return true
+      const named = e.track_id ? this.#state(e.track_id)?.track.id : undefined
+      if (ctx.parentTrackIds.length) return named === undefined || thread.has(named)
+      if (endedOnSaySo) return false
+      endedOnSaySo = true
+      return true
+    }
     const ids: (string | null)[] = []
     for (const [i, ev] of events.entries()) {
+      if (!mayEnd(ev)) {
+        ids.push(null)
+        continue
+      }
       // "Курс Аеропорт/Матвіївка" split by the model into two course-only updates of one
       // object: the second is an alternative goal, not another object. Counted lines
       // ("3 … ⏎ 1 …") or named positions stay separate.

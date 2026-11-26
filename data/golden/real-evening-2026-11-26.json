@@ -62,5 +62,49 @@
         }
       ]
     }
+  },
+  {
+    "name": "'Всі до X' is one update, nothing lost (real, 22:19)",
+    "text": "Всі до Хортицького/ВХ",
+    "parents": [
+      "Не фіксується\n\nЛокаційно: 2 на Хортицький повз Долинське, 1 на Долинське, 1 на Смоляне"
+    ],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "action": "update",
+          "toward": "Хортицький район"
+        }
+      ]
+    }
+  },
+  {
+    "name": "'Вибухи в X' is an explosion only (real, 22:20)",
+    "text": "Вибухи в Запоріжжі",
+    "parents": ["Заходять!"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "explosion",
+          "location": "Запоріжжя"
+        }
+      ]
+    }
+  },
+  {
+    "name": "'3 БПЛА' in an attack are shaheds (real, 22:06)",
+    "text": "Область - 3 БПЛА напрямок Софіївка\n\nЗапоріжжя - чисто",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "shahed",
+          "count": 3,
+          "toward": "Софіївка"
+        }
+      ]
+    }
   }
 ]

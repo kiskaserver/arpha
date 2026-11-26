@@ -574,4 +574,31 @@ describe('Tracker', () => {
     expect(near[1]).not.toBeNull()
     expect(near[1]).not.toBe(a)
   })
+
+  it('one post cannot wipe out threats outside its reply thread', () => {
+    const { tracker } = setup()
+    const [mine] = tracker.apply([resolved({ location: 'Хортиця' })], ctx(0))
+    const others = ['Оріхів', 'Гуляйполе', 'Пологи'].map(
+      (place, i) =>
+        tracker.apply(
+          [resolved({ location: place })],
+          ctx(1, { message: message({ id: 100 + i, channel: `other${i}`, date: min(1) }) }),
+        )[0]!,
+    )
+    // "Всі до Хортицького/ВХ" in reply to `mine`, misread as an update plus a "lost" per threat.
+    tracker.apply(
+      [
+        resolved({ action: 'update', toward: 'Хортиця' }),
+        ...others.map((id) => resolved({ action: 'lost', track_id: id })),
+      ],
+      ctx(2, { parentTrackIds: [mine!] }),
+    )
+    expect(others.map((id) => tracker.get(id)!.status)).toEqual(['active', 'active', 'active'])
+    // Outside a thread, a post ends at most one object on the model's link alone.
+    tracker.apply(
+      others.map((id) => resolved({ action: 'destroyed', track_id: id })),
+      ctx(3),
+    )
+    expect(others.filter((id) => tracker.get(id)!.status === 'destroyed')).toHaveLength(1)
+  })
 })

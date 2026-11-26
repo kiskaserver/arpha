@@ -148,6 +148,12 @@ LOCATIONS — return canonical Ukrainian names in the nominative case:
   the group already reported. With no type in the post, they are of the same type as what the thread / the channel's
   active tracks are about ("4 шахеда на …" then "Ще 3 від …" → 3 more shaheds, not jets).
 - "Вже N", "N над X", "Група з N" in a reply = the count (and place) of that group: action update with count.
+- "Всі до X", "всі на X" = the thread's objects heading to X: ONE update event with toward X. Never "lost".
+- lost/destroyed only for an object THIS post says ended ("без фіксації", "зник", "впав", "мінус", "збили").
+  "Вибухи в X", "гучно", "приліт" alone = one explosion event (location X if named); do not end tracked objects with it.
+- Future or expected ("зараз в'єбуть", "можуть", "буде", "ще будуть залітати") is not an explosion and not an event.
+- "N БпЛА", "група БпЛА" in an attack = shahed; recon_drone only for Орлан, Зала, Суперкам, Мавік, "розвідник".
+- "Останні N на X", "N на X", "N до X" = toward X (not location).
 - heading = compass direction only when stated ("північно-західним курсом" → NW, "на схід" → E).
 - precision: exact for a named village/landmark/micro-district, near for "в районі/неподалік/околиці" or lists, area for raions/oblast.
 - Do not invent places. Leave fields null when not stated.
@@ -199,7 +205,9 @@ EXAMPLES (post → report; fields not shown are null, count 1, action new, confi
    [{type:jet_drone, action:update, location:"Ясна Поляна"}, {type:jet_drone, action:update, toward:"Тарасівка"}, {type:jet_drone, action:update, toward:"Широке"}]
 23. Reply to track t5: "Скворцова/ДД" → one event [{type:jet_drone, action:update, location:"Скворцова", precision:near, track_id:"t5"}]
 24. After "4 шахеда на Новослобідку": "Ще 3 від Новосергіївки в бік Хортицького" → [{type:shahed, action:new, count:3, from:"Новосергіївка", toward:"Хортицький район"}]
-25. "Повз Біленьке ще шахед в напрямку Новосергіївки" → [{type:shahed, action:new, location:"Біленьке", toward:"Новосергіївка"}]`
+25. "Повз Біленьке ще шахед в напрямку Новосергіївки" → [{type:shahed, action:new, location:"Біленьке", toward:"Новосергіївка"}]
+26. Reply to a post about three shaheds: "Всі до Хортицького/ВХ" → [{type:shahed, action:update, toward:"Хортицький район"}] (one event)
+27. "Вибухи в Запоріжжі" → [{type:explosion, location:"Запоріжжя"}] (one event, nothing ends)`
 
 function formatAge(ms: number, now: number): string {
   const min = Math.max(0, Math.round((now - ms) / 60_000))
