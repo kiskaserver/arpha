@@ -1,6 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { uk } from '../src/lib/i18n'
-import { disablePush, enablePush, type PushEnv, pushSupported } from '../src/lib/push'
+import {
+  disablePush,
+  enablePush,
+  type PushEnv,
+  prefetchPushKey,
+  pushSupported,
+  resetPushKey,
+} from '../src/lib/push'
 import { LiveStream } from '../src/lib/stream'
 
 class FakeES {
@@ -76,6 +83,7 @@ describe('LiveStream', () => {
 })
 
 describe('push', () => {
+  beforeEach(() => resetPushKey())
   const sub = {
     endpoint: 'https://push.example/1',
     toJSON: () => ({ endpoint: 'https://push.example/1', keys: { p256dh: 'p', auth: 'a' } }),
@@ -176,7 +184,7 @@ describe('push', () => {
         prefs,
         env({ fetch: (async () => Promise.reject(new TypeError('net'))) as typeof fetch }).env,
       ),
-    ).toEqual({ ok: false, reason: 'failed', detail: 'TypeError' })
+    ).toEqual({ ok: false, reason: 'failed', detail: 'TypeError: net' })
   })
 
   it('replaces a subscription made with another server key', async () => {
@@ -201,6 +209,46 @@ describe('push', () => {
     e.pushManager.subscribe.mockRejectedValueOnce(new DOMException('stale', 'InvalidStateError'))
     expect(await enablePush(prefs, e.env)).toEqual({ ok: true })
     expect(e.pushManager.subscribe).toHaveBeenCalledTimes(2)
+  })
+
+  it('asks for permission before any network round trip (Safari needs the tap)', async () => {
+    const order: string[] = []
+    const e = env({
+      Notification: {
+        requestPermission: async () => {
+          order.push('permission')
+          return 'granted'
+        },
+      },
+    })
+    const fetchFn = e.env.fetch
+    e.env.fetch = (async (url: string, init?: RequestInit) => {
+      order.push(url)
+      return fetchFn(url, init)
+    }) as typeof fetch
+    await enablePush(prefs, e.env)
+    expect(order).toEqual(['permission', '/api/push/key', '/api/push/subscribe'])
+  })
+
+  it('uses the key fetched ahead of time, so the tap does no network before subscribing', async () => {
+    const e = env()
+    await prefetchPushKey(e.env)
+    e.fetchFn.mockClear()
+    expect(await enablePush(prefs, e.env)).toEqual({ ok: true })
+    expect(e.fetchFn.mock.calls.map((c) => c[0])).toEqual(['/api/push/subscribe'])
+  })
+
+  it('waits for a freshly deployed service worker to finish activating', async () => {
+    const e = env()
+    const worker = Object.assign(new EventTarget(), { state: 'activating' })
+    const ready = Promise.resolve({ pushManager: e.pushManager, active: worker })
+    e.env.serviceWorker = { ready } as unknown as ServiceWorkerContainer
+    const pending = enablePush(prefs, e.env)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(e.pushManager.subscribe).not.toHaveBeenCalled()
+    worker.state = 'activated'
+    worker.dispatchEvent(new Event('statechange'))
+    expect(await pending).toEqual({ ok: true })
   })
 
   it('explains each failure in Ukrainian, with the error to report', () => {
@@ -230,7 +278,7 @@ describe('push', () => {
     expect(await enablePush(prefs, broken.env)).toEqual({
       ok: false,
       reason: 'subscribe',
-      detail: 'AbortError',
+      detail: 'AbortError: Registration failed - push service not available',
       standalone: false,
     })
     // In the installed app the user also gets the Android-side checklist.

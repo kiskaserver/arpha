@@ -55,20 +55,59 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 /** Ask permission, subscribe with the server's VAPID key, register preferences. */
+/** The server's VAPID key, fetched ahead of the tap so the tap itself does no network first. */
+let cachedKey: string | null = null
+
+async function fetchKey(env: PushEnv): Promise<string | null> {
+  const res = await env.fetch('/api/push/key')
+  if (!res.ok) return null
+  cachedKey = ((await res.json()) as { publicKey: string }).publicKey
+  return cachedKey
+}
+
+/** Warm the key cache (call on app start); errors are ignored, enablePush retries. */
+export async function prefetchPushKey(env: PushEnv = defaultEnv()): Promise<void> {
+  if (!pushSupported(env)) return
+  await fetchKey(env).catch(() => null)
+}
+
+/** For tests: forget the cached key. */
+export function resetPushKey(): void {
+  cachedKey = null
+}
+
+/**
+ * The registration once its worker is fully active: subscribing while a freshly deployed
+ * worker is still activating fails with "AbortError: no active Service Worker".
+ */
+async function activeRegistration(sw: ServiceWorkerContainer): Promise<ServiceWorkerRegistration> {
+  const reg = await sw.ready
+  const worker = reg.active
+  if (worker && worker.state !== 'activated') {
+    await new Promise<void>((resolve) => {
+      const done = () => worker.state === 'activated' && resolve()
+      worker.addEventListener('statechange', done)
+      setTimeout(resolve, 3000)
+    })
+  }
+  return reg
+}
+
 export async function enablePush(
   prefs: PushPrefs,
   env: PushEnv = defaultEnv(),
 ): Promise<PushResult> {
   if (!pushSupported(env)) return { ok: false, reason: 'unsupported' }
   try {
-    const keyRes = await env.fetch('/api/push/key')
-    if (!keyRes.ok) return { ok: false, reason: 'unavailable' }
-    const { publicKey } = (await keyRes.json()) as { publicKey: string }
-
+    // Ask first, straight from the tap: browsers (Safari strictly) want the prompt — and on
+    // iOS the subscribe — inside the user gesture, before any network round trip.
     const permission = await env.Notification!.requestPermission()
     if (permission !== 'granted') return { ok: false, reason: 'denied' }
 
-    const reg = await env.serviceWorker!.ready
+    const publicKey = cachedKey ?? (await fetchKey(env))
+    if (!publicKey) return { ok: false, reason: 'unavailable' }
+
+    const reg = await activeRegistration(env.serviceWorker!)
     const key = urlBase64ToUint8Array(publicKey)
     const subscribe = () =>
       reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key })
@@ -116,11 +155,16 @@ function sameKey(a: ArrayBuffer | null | undefined, b: Uint8Array): boolean {
   return x.length === b.length && x.every((v, i) => v === b[i])
 }
 
-/** The error's name ("AbortError", "InvalidStateError"); DOMException is not always an Error. */
+/**
+ * "AbortError: Registration failed - push service error" vs "… no active Service Worker":
+ * the name alone does not tell a network problem from a timing one. DOMException is not
+ * always an Error, so read the fields directly.
+ */
 function describe(err: unknown): string {
-  const name =
-    typeof err === 'object' && err !== null && 'name' in err ? String(err.name) : String(err)
-  return name.slice(0, 60)
+  if (typeof err !== 'object' || err === null) return String(err).slice(0, 90)
+  const name = 'name' in err ? String(err.name) : ''
+  const message = 'message' in err ? String(err.message) : ''
+  return (message ? `${name}: ${message}` : name || String(err)).slice(0, 90)
 }
 
 export async function disablePush(env: PushEnv = defaultEnv()): Promise<void> {

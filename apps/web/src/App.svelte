@@ -10,7 +10,7 @@ import { uk } from './lib/i18n'
 import type { MapController } from './lib/map'
 import { MotionModel } from './lib/motion'
 import { type InAppAlert, Notifier } from './lib/notify'
-import { disablePush, enablePush, pushSupported } from './lib/push'
+import { disablePush, enablePush, prefetchPushKey, pushSupported } from './lib/push'
 import {
   applyTheme,
   loadSettings,
@@ -296,6 +296,8 @@ function selectFromToast() {
 }
 
 onMount(() => {
+  // So the "enable notifications" tap prompts at once, with no network round trip first.
+  void prefetchPushKey()
   applyTheme(settings.theme)
   void refreshMyAreas()
   // If location access was granted before, show "you are here" right away.
