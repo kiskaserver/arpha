@@ -142,7 +142,7 @@ function updateSettings(patch: Partial<Settings>) {
     refreshMyAreas()
   }
   if ('lingerMin' in patch) map?.setLinger(settings.lingerMin)
-  if ('showTrails' in patch) map?.setShowTrails(settings.showTrails)
+  if ('trails' in patch) map?.setTrails(settings.trails)
   if ('hotspots' in patch) void refreshHotspots()
   const pushRelevant = ['points', 'radiusKm', 'pushAlerts', 'pushThreats', 'classes']
   if (settings.pushEnabled && pushRelevant.some((k) => k in patch)) void togglePush(true)
@@ -357,7 +357,7 @@ onMount(() => {
       map.setPoints(settings.points, settings.radiusKm)
       map.setInfra(live.infra)
       map.setLinger(settings.lingerMin)
-      map.setShowTrails(settings.showTrails)
+      map.setTrails(settings.trails)
       map.setMe(me)
       // The user may have started picking a point before the map finished loading.
       map.setPicking(picking)

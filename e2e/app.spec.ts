@@ -101,6 +101,11 @@ test.describe('Арфа', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
     await page.getByTestId('open-settings').click()
     await expect(page.getByTestId('point-zone')).toHaveValue('5')
+    // The trail of the selected threat can be switched off entirely.
+    await page.getByTestId('trails').selectOption('off')
+    await page.reload()
+    await page.getByTestId('open-settings').click()
+    await expect(page.getByTestId('trails')).toHaveValue('off')
   })
 
   test('legend explains every symbol in Ukrainian', async ({ page }) => {

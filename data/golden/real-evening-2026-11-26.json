@@ -1,0 +1,66 @@
+[
+  {
+    "name": "'ще шахед' is a new object (real, 21:58)",
+    "text": "Повз Біленьке ще шахед в напрямку Новосергіївки",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "shahed",
+          "action": "new",
+          "location": "Біленьке",
+          "toward": "Новосергіївка"
+        }
+      ]
+    }
+  },
+  {
+    "name": "'Ще 3' after shaheds are shaheds (real, 22:00)",
+    "text": "Ще 3 від Новосергіївки в бік Хортицького/Новослобідки",
+    "parents": ["4 шахеда на Новослобідку"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "shahed",
+          "action": "new",
+          "count": 3
+        }
+      ]
+    }
+  },
+  {
+    "name": "two groups in one post (real, 21:57)",
+    "text": "3 беруть курс на Новослобідку\n1 на Новосергіївку",
+    "parents": ["3 шахеда північніше Новосергіївки\n\n2 шахеда в районі Уділенське"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "shahed",
+          "count": 3,
+          "toward": "Новослобідка"
+        },
+        {
+          "type": "shahed",
+          "toward": "Новосергіївка"
+        }
+      ]
+    }
+  },
+  {
+    "name": "group size in a reply is an update (real, 21:57)",
+    "text": "Пацани працюють.\n\nГрупа з 5-6 мопедів.\n\nНизько йдуть.",
+    "parents": ["3 беруть курс на Новослобідку\n1 на Новосергіївку"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "shahed",
+          "action": "update",
+          "count": 5
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Notification badge: Android draws only the alpha channel, so a white silhouette on
+       transparency. The logo's harp with thicker strokes, legible at 24 dp. -->
+  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M140 410 C140 250 215 135 365 100" stroke-width="46"/>
+    <path d="M140 410 L370 410 L370 120" stroke-width="46"/>
+    <line x1="215" y1="410" x2="215" y2="255" stroke-width="32"/>
+    <line x1="290" y1="410" x2="290" y2="165" stroke-width="32"/>
+  </g>
+  <circle cx="400" cy="92" r="48" fill="#fff"/>
+</svg>

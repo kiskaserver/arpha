@@ -59,7 +59,8 @@ self.addEventListener('push', (event) => {
       body: data.body,
       tag: data.tag,
       icon: '/pwa-192x192.png',
-      badge: '/pwa-64x64.png',
+      // Monochrome silhouette on transparency: Android draws only the alpha of the badge.
+      badge: '/badge-96.png',
       data: { url: data.url },
       requireInteraction: data.tag === 'alert',
     } as NotificationOptions),

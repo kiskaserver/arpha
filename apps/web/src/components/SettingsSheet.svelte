@@ -1,7 +1,7 @@
 <script lang="ts">
 import { THREAT_CLASS_LABELS_UK, THREAT_CLASSES, type ThreatClass } from '@arpha/shared'
 import { uk } from '../lib/i18n'
-import type { Settings, SoundCategory, SoundId, Theme } from '../lib/settings'
+import type { Settings, SoundCategory, SoundId, Theme, TrailMode } from '../lib/settings'
 
 interface Props {
   settings: Settings
@@ -242,10 +242,19 @@ $effect(() => {
         <input type="checkbox" checked={settings.hotspots} onchange={(e) => onchange({ hotspots: e.currentTarget.checked })} />
         {uk.hotspots}
       </label>
-      <label class="check">
-        <input type="checkbox" checked={settings.showTrails} onchange={(e) => onchange({ showTrails: e.currentTarget.checked })} />
-        {uk.showTrails}
-      </label>
+      <div class="sound">
+        <label for="trails">{uk.trails}</label>
+        <select
+          id="trails"
+          data-testid="trails"
+          value={settings.trails}
+          onchange={(e) => onchange({ trails: e.currentTarget.value as TrailMode })}
+        >
+          <option value="selected">{uk.trailsSelected}</option>
+          <option value="all">{uk.trailsAll}</option>
+          <option value="off">{uk.trailsOff}</option>
+        </select>
+      </div>
       <h3 id="theme-label" class="sub">{uk.theme}</h3>
       <div class="seg" role="radiogroup" aria-labelledby="theme-label">
         {#each themes as t (t.value)}

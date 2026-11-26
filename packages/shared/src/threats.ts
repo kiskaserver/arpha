@@ -217,6 +217,16 @@ export function typesCompatible(a: ThreatType, b: ThreatType): boolean {
   return groups.some((g) => g.includes(a) && g.includes(b))
 }
 
+/**
+ * Same kind for matching without an explicit link (proximity, target, merging): in a mixed
+ * wave a shahed group and a jet nearby are different objects. Replies still use the looser
+ * typesCompatible ("БпЛА" in reply to "шахед").
+ */
+export function sameKind(a: ThreatType, b: ThreatType): boolean {
+  if (a === 'explosion' || b === 'explosion') return a === b
+  return a === b || a === 'unknown' || b === 'unknown'
+}
+
 export function isThreatType(value: unknown): value is ThreatType {
   return typeof value === 'string' && (THREAT_TYPES as readonly string[]).includes(value)
 }

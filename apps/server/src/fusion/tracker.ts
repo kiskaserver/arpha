@@ -9,6 +9,7 @@ import {
   type LatLon,
   localFrame,
   type NamedPoint,
+  sameKind,
   THREAT_PROFILES,
   type ThreatType,
   type Track,
@@ -114,6 +115,8 @@ const MAX_ORIGIN_AS_POSITION_KM = 5
 /** Explosion reports this close in space and time describe the same blast. */
 const SAME_BLAST_KM = 2
 const SAME_BLAST_MS = 15 * 60_000
+/** A course-only update with no visible thread joins the single object this close to its goal. */
+const COURSE_ONLY_KM = 25
 /** An unattached update this far from every object of its reply thread is a misread place. */
 const THREAD_RADIUS_KM = 40
 /** Reports this close to the forecast are blended; farther ones move the object there. */
@@ -146,6 +149,8 @@ export class Tracker {
   readonly #states = new Map<string, TrackState>()
   /** Ids of merged tracks → the track they live on in (replies still name the old id). */
   readonly #aliases = new Map<string, string>()
+  /** Pairs of tracks one post described as separate groups: never merged ("3 … ⏎ 2 …"). */
+  readonly #distinct = new Set<string>()
   readonly #hooks: TrackerHooks
 
   constructor(hooks: TrackerHooks = {}, initial: TrackState[] = []) {
@@ -195,11 +200,31 @@ export class Tracker {
   /** Applies one message's events. Returns the track id each event landed on (null if dropped). */
   apply(events: ResolvedEvent[], ctx: ApplyContext): (string | null)[] {
     const used = new Set<string>()
-    const ids = events.map((ev) => {
-      const id = this.#applyOne(ev, ctx, used)
+    const courseOnly = (e: ResolvedEvent) =>
+      e.action === 'update' && !e.locationPlace && e.count === null
+    const ids: (string | null)[] = []
+    for (const [i, ev] of events.entries()) {
+      // "Курс Аеропорт/Матвіївка" split by the model into two course-only updates of one
+      // object: the second is an alternative goal, not another object. Counted lines
+      // ("3 … ⏎ 1 …") or named positions stay separate.
+      const alternative =
+        courseOnly(ev) &&
+        events.slice(0, i).some((p, j) => ids[j] && p.type === ev.type && courseOnly(p))
+      const id = alternative ? null : this.#applyOne(ev, ctx, used)
       if (id) used.add(id)
-      return id
-    })
+      ids.push(id)
+    }
+    // Events that differ (place, course or count) are groups the post told apart; identical
+    // ones are the model repeating a single object and say nothing.
+    const sig = (e: ResolvedEvent) =>
+      `${e.locationPlace?.name}|${e.towardPlace?.name}|${e.count ?? ''}`
+    for (let i = 0; i < ids.length; i++)
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = ids[i]
+        const b = ids[j]
+        if (!a || !b || a === b || sig(events[i]!) === sig(events[j]!)) continue
+        this.#distinct.add(a < b ? `${a}|${b}` : `${b}|${a}`)
+      }
     return ids.map((id) => (id ? this.#mergeDuplicates(id, ctx.observedAt) : id))
   }
 
@@ -214,7 +239,10 @@ export class Tracker {
     if (a?.track.status !== 'active' || !a.kf) return id
     for (const b of this.#states.values()) {
       if (b === a || b.track.status !== 'active' || !b.kf) continue
-      if (!typesCompatible(a.track.type, b.track.type)) continue
+      if (!sameKind(a.track.type, b.track.type)) continue
+      const pair =
+        a.track.id < b.track.id ? `${a.track.id}|${b.track.id}` : `${b.track.id}|${a.track.id}`
+      if (this.#distinct.has(pair)) continue
       if (now - a.lastObsAt > MERGE_RECENT_MS || now - b.lastObsAt > MERGE_RECENT_MS) continue
       if (haversineKm(this.#predicted(a, now).point, this.#predicted(b, now).point) > MERGE_KM)
         continue
@@ -280,6 +308,8 @@ export class Tracker {
       if (s.removeAt !== null && now >= s.removeAt) {
         this.#states.delete(s.track.id)
         for (const [from, to] of this.#aliases) if (to === s.track.id) this.#aliases.delete(from)
+        for (const pair of this.#distinct)
+          if (pair.includes(s.track.id)) this.#distinct.delete(pair)
         this.#hooks.onRemove?.(s.track.id, s)
         continue
       }
@@ -392,6 +422,12 @@ export class Tracker {
     const nearby = (s: TrackState): boolean =>
       s.track.status === 'active' ||
       (s.track.status === 'lost' && at - s.track.updatedAt <= SPATIAL_REVIVE_MS)
+    // "Ще 3 …", "ще шахед", "ще пара": the channel itself says this is another object, so not
+    // one it is already reporting (another channel's report of it is still a duplicate).
+    const fresh = ev.action === 'new'
+    // …while that object is still being reported; a lost one may simply have reappeared.
+    const own = (s: TrackState) =>
+      s.track.status === 'active' && s.channels.includes(ctx.message.channel)
 
     // A blast is a point: only a report of the same spot minutes later is the same one
     // (separate explosions at Кар'єри, Мокрянка and Космос are not a flight path).
@@ -411,11 +447,13 @@ export class Tracker {
     // 1. The model linked it explicitly.
     if (ev.track_id) {
       const s = this.#state(ev.track_id)
-      if (usable(s)) return s
+      if (usable(s) && !(fresh && own(s))) return s
     }
 
     // 2. A reply to a post about known tracks (merged ids resolve to their survivor).
-    const parents = [...new Set(ctx.parentTrackIds.map((id) => this.#state(id)))].filter(usable)
+    const parents = fresh
+      ? []
+      : [...new Set(ctx.parentTrackIds.map((id) => this.#state(id)))].filter(usable)
     const freeParents = parents.filter((s) => !used.has(s.track.id))
     if (freeParents.length === 1) return freeParents[0]!
     if (freeParents.length > 1)
@@ -423,15 +461,35 @@ export class Tracker {
 
     // 3. Spatial gating against everything compatible.
     const candidates = [...this.#states.values()].filter(
-      (s) => compatible(s) && nearby(s) && !used.has(s.track.id),
+      (s) =>
+        sameKind(s.track.type, ev.type) && nearby(s) && !used.has(s.track.id) && !(fresh && own(s)),
     )
     if (!point) {
       const target = ev.towardPlace?.name
       if (!target) return null
+      // A repeated position-less warning ("Загроза балістики на Запоріжжя") is the same one,
+      // even when the channel posts it again as new.
+      const announced = [...this.#states.values()].find(
+        (s) =>
+          sameKind(s.track.type, ev.type) &&
+          nearby(s) &&
+          !used.has(s.track.id) &&
+          !s.track.position &&
+          s.track.target?.name === target,
+      )
+      if (announced) return announced
       const same = candidates.filter((s) => s.track.target?.name === target)
       // "Реактив до Ясної Поляни продовжує рух" from another channel: the one object of
       // this kind already heading there. A "new" report means another object.
       if (ev.action !== 'new' && same.length === 1) return same[0]!
+      // "Розвернувся в бік X" whose thread we cannot see: the one object of this kind close to X.
+      const toward = ev.towardPlace
+      if (ev.action !== 'new' && toward) {
+        const close = candidates.filter(
+          (s) => s.track.position && haversineKm(s.track.position, toward) <= COURSE_ONLY_KM,
+        )
+        if (close.length === 1) return close[0]!
+      }
       return same.find((s) => !s.track.position) ?? null
     }
     return this.#nearest(candidates, point, ctx.observedAt, true)

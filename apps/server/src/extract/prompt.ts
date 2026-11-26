@@ -144,6 +144,10 @@ LOCATIONS — return canonical Ukrainian names in the nominative case:
 - When a post lists alternatives ("Піски/Дослідна/Космос", "МК/Кушугум/Балабине"), use the first named place as location (precision "near"). Alternatives joined by "/" are ONE object, never several events.
 - Per-line lists ("1 Заводи ⏎ 1 до Аеропорту ⏎ 1 Українка", "По реактивних: 1 … 1 … 1 …") are SEPARATE objects: exactly one event per line, in order. A bare place on a line = location; "до X"/"на X" on a line = toward X.
 - Шевченківське (a village east of the city, next to Григорівське) is NOT Шевченківський район (the city district, "Шевчик").
+- "ще", "ще один", "ще N", "ще пара" (пара = 2), "Щонайменше N ще", "Другий …" = MORE objects: action new, never an update of
+  the group already reported. With no type in the post, they are of the same type as what the thread / the channel's
+  active tracks are about ("4 шахеда на …" then "Ще 3 від …" → 3 more shaheds, not jets).
+- "Вже N", "N над X", "Група з N" in a reply = the count (and place) of that group: action update with count.
 - heading = compass direction only when stated ("північно-західним курсом" → NW, "на схід" → E).
 - precision: exact for a named village/landmark/micro-district, near for "в районі/неподалік/околиці" or lists, area for raions/oblast.
 - Do not invent places. Leave fields null when not stated.
@@ -193,7 +197,9 @@ EXAMPLES (post → report; fields not shown are null, count 1, action new, confi
 21. "Новий реактив з півночі до Новомиколаївки" → [{type:jet_drone, heading:"S", toward:"Новомиколаївка"}]
 22. Reply to a post about three jets: "1 Ясна Поляна ⏎ 1 до Тарасівки ⏎ 1 до Широкого" → three events:
    [{type:jet_drone, action:update, location:"Ясна Поляна"}, {type:jet_drone, action:update, toward:"Тарасівка"}, {type:jet_drone, action:update, toward:"Широке"}]
-23. Reply to track t5: "Скворцова/ДД" → one event [{type:jet_drone, action:update, location:"Скворцова", precision:near, track_id:"t5"}]`
+23. Reply to track t5: "Скворцова/ДД" → one event [{type:jet_drone, action:update, location:"Скворцова", precision:near, track_id:"t5"}]
+24. After "4 шахеда на Новослобідку": "Ще 3 від Новосергіївки в бік Хортицького" → [{type:shahed, action:new, count:3, from:"Новосергіївка", toward:"Хортицький район"}]
+25. "Повз Біленьке ще шахед в напрямку Новосергіївки" → [{type:shahed, action:new, location:"Біленьке", toward:"Новосергіївка"}]`
 
 function formatAge(ms: number, now: number): string {
   const min = Math.max(0, Math.round((now - ms) / 60_000))

@@ -51,7 +51,7 @@ export class MapController {
   #routes: { fromLat: number; fromLon: number; toLat: number; toLon: number; count: number }[] = []
   #hotspots: Hotspot[] | null = null
   #lingerMin = 2
-  #showTrails = false
+  #trails: 'selected' | 'all' | 'off' = 'selected'
   #picking = false
   #raf = 0
   #timer: ReturnType<typeof setTimeout> | null = null
@@ -687,8 +687,8 @@ export class MapController {
     ;(this.#map.getSource('routes') as GeoJSONSource).setData(fc(features))
   }
 
-  setShowTrails(on: boolean): void {
-    this.#showTrails = on
+  setTrails(mode: 'selected' | 'all' | 'off'): void {
+    this.#trails = mode
     this.invalidate()
   }
 
@@ -746,7 +746,7 @@ export class MapController {
       now,
       selected: this.#selected,
       lingerMin: this.#lingerMin,
-      showTrails: this.#showTrails,
+      trails: this.#trails,
     })
     const set = (id: string, features: Feature[]) =>
       (this.#map.getSource(id) as GeoJSONSource).setData(fc(features))

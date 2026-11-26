@@ -69,8 +69,8 @@ export interface FrameInput {
   now: number
   selected: string | null
   lingerMin: number
-  /** Draw every threat's trail, not only the selected one's. */
-  showTrails?: boolean
+  /** Whose trail to draw (default: the selected threat's). */
+  trails?: 'selected' | 'all' | 'off'
 }
 
 /** Build the per-frame GeoJSON (pure; unit-tested). Call `motion.advance(now)` first. */
@@ -80,7 +80,7 @@ export function buildFrame({
   now,
   selected,
   lingerMin,
-  showTrails = false,
+  trails: trailMode = 'selected',
 }: FrameInput) {
   const points: Feature[] = []
   const vectors: Feature[] = []
@@ -130,7 +130,8 @@ export function buildFrame({
     const moving = isExtrapolating(t, now)
     // Where it has been: the reported villages, joined up to where it is now.
     const sel = t.id === selected
-    const trail = sel || showTrails ? (t.trail ?? []) : []
+    const drawn = trailMode === 'all' || (trailMode === 'selected' && sel)
+    const trail = drawn ? (t.trail ?? []) : []
     if (trail.length) {
       trails.push({
         type: 'Feature',

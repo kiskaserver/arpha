@@ -393,16 +393,16 @@ describe('frame', () => {
       { name: 'Комишуваха', lat: 47.715, lon: 35.524, at: NOW - 300_000 },
     ]
     const tracks = [track({ id: 'a', trail }), track({ id: 'b', trail })]
-    const frame = (showTrails: boolean) =>
+    const frame = (trails: 'selected' | 'all' | 'off') =>
       buildFrame({
         tracks,
         motion: new MotionModel(),
         now: NOW,
         selected: 'a',
         lingerMin: 0,
-        showTrails,
+        trails,
       })
-    const f = frame(false)
+    const f = frame('selected')
     expect(f.trails).toHaveLength(1)
     // The line ends at the icon, so the path joins up with where it is now.
     const line = f.trails[0]!.geometry as GeoJSON.LineString
@@ -415,7 +415,10 @@ describe('frame', () => {
       f.trailPoints[0]!.properties.order as number,
     )
     // With the setting on, the others get an unlabelled path too.
-    const all = frame(true)
+    // "Не показувати": no trail at all, not even the selected threat's.
+    expect(frame('off').trails).toHaveLength(0)
+    expect(frame('off').trailPoints).toHaveLength(0)
+    const all = frame('all')
     expect(all.trails).toHaveLength(2)
     expect(all.trailPoints.map((p) => p.properties.label)).toEqual([
       'Таврійське',
@@ -492,7 +495,7 @@ describe('settings', () => {
       'arpha:settings:v1',
       JSON.stringify({
         radiusKm: 15,
-        showTrails: 'yes',
+        showTrails: true,
         points: [
           { id: 'a', name: 'Дім', lat: 47.8, lon: 35.1, radiusKm: 5 },
           { id: 'b', name: 'Робота', lat: 47.85, lon: 35.15, radiusKm: 999 },
@@ -504,7 +507,8 @@ describe('settings', () => {
     expect(loaded.points[1]!.radiusKm).toBeUndefined()
     expect(zoneOf(loaded.points[0], loaded)).toBe(5)
     expect(zoneOf(loaded.points[1], loaded)).toBe(15)
-    expect(loaded.showTrails).toBe(false)
+    // The old "every threat" checkbox maps onto the new choice.
+    expect(loaded.trails).toBe('all')
   })
 
   it('migrates the single point of v1', () => {

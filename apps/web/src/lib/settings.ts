@@ -3,6 +3,9 @@ import { type LatLon, THREAT_CLASSES, type ThreatClass } from '@arpha/shared'
 export type Theme = 'auto' | 'light' | 'dark'
 export type SoundId = 'off' | 'soft' | 'chime' | 'siren'
 export type SoundCategory = 'alert' | 'ballistic' | 'threat'
+/** Whose flight trail is drawn: the selected threat's, every threat's, or none. */
+export type TrailMode = 'selected' | 'all' | 'off'
+const TRAIL_MODES: TrailMode[] = ['selected', 'all', 'off']
 
 export interface SavedPoint extends LatLon {
   id: string
@@ -34,8 +37,8 @@ export interface Settings {
   speak: boolean
   /** How long destroyed/lost targets stay on the map, minutes (0 = disappear at once). */
   lingerMin: number
-  /** Draw where every threat has been (otherwise only the selected one). */
-  showTrails: boolean
+  /** Draw where threats have been: the selected one (default), all, or none. */
+  trails: TrailMode
   /** Show where threats were reported most in the last 30 days. */
   hotspots: boolean
 }
@@ -53,7 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
   flash: false,
   speak: false,
   lingerMin: 2,
-  showTrails: false,
+  trails: 'selected',
   hotspots: false,
 }
 
@@ -95,7 +98,12 @@ export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStor
           ...(r >= 1 && r <= 100 ? { radiusKm: Math.round(r) } : {}),
         }
       })
-    s.showTrails = s.showTrails === true
+    // v1 had a checkbox for "every threat"; its "on" meant all.
+    const legacy = (parsed as { showTrails?: unknown }).showTrails
+    if (!TRAIL_MODES.includes(parsed.trails as TrailMode)) {
+      s.trails = legacy === true ? 'all' : 'selected'
+    }
+    delete (s as { showTrails?: unknown }).showTrails
     s.radiusKm = Math.min(100, Math.max(1, Number(s.radiusKm) || DEFAULT_SETTINGS.radiusKm))
     if (!['auto', 'light', 'dark'].includes(s.theme)) s.theme = 'auto'
     s.classes = (Array.isArray(s.classes) ? s.classes : DEFAULT_SETTINGS.classes).filter((c) =>
