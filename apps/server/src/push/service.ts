@@ -35,6 +35,8 @@ export interface PushPayload {
 export interface WatchedPoint extends LatLon {
   name: string
   featureIds: string[]
+  /** Own zone ("Дім" 5 km, "Робота" 15 km); else the subscription's radiusKm. */
+  radiusKm?: number
 }
 
 export interface StoredSubscription {
@@ -122,6 +124,7 @@ export class PushService {
           ...at,
           name: p.name,
           featureIds: this.#o.boundaries.containing(at).map((f) => f.id),
+          ...(p.radiusKm ? { radiusKm: p.radiusKm } : {}),
         }
       }),
       radiusKm: input.radiusKm,
@@ -248,7 +251,7 @@ export class PushService {
     }
     let best: { name: string; eta: number; km: number } | null = null
     for (const p of sub.points) {
-      const a = computeApproach(track, p, now, sub.radiusKm)
+      const a = computeApproach(track, p, now, p.radiusKm ?? sub.radiusKm)
       if (!a || a.etaMin === null || a.etaMin > threshold) continue
       if (!best || a.etaMin < best.eta) best = { name: p.name, eta: a.etaMin, km: a.distanceKm }
     }

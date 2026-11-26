@@ -58,6 +58,19 @@ function renamePoint(id: string, name: string) {
   })
 }
 
+/** Zone choices for a single point, km. */
+const ZONES = [3, 5, 10, 15, 25, 50]
+
+function setPointZone(id: string, km: number | undefined) {
+  onchange({
+    points: settings.points.map((p) => {
+      if (p.id !== id) return p
+      const { radiusKm: _, ...rest } = p
+      return km ? { ...rest, radiusKm: km } : rest
+    }),
+  })
+}
+
 let dialog: HTMLDialogElement
 $effect(() => {
   dialog.showModal()
@@ -92,6 +105,15 @@ $effect(() => {
                 onchange={(e) => renamePoint(p.id, e.currentTarget.value.trim())}
               />
               <span class="coords">{p.lat.toFixed(3)}, {p.lon.toFixed(3)}</span>
+              <select
+                aria-label={`${uk.pointZone}: ${p.name}`}
+                data-testid="point-zone"
+                value={String(p.radiusKm ?? '')}
+                onchange={(e) => setPointZone(p.id, Number(e.currentTarget.value) || undefined)}
+              >
+                <option value="">{uk.zoneDefault(settings.radiusKm)}</option>
+                {#each ZONES as km (km)}<option value={String(km)}>{km} {uk.km}</option>{/each}
+              </select>
               <button
                 type="button"
                 class="ghost"
@@ -112,7 +134,7 @@ $effect(() => {
     </section>
 
     <section>
-      <label class="h3" for="radius">{uk.radius}: <b>{settings.radiusKm} {uk.km}</b></label>
+      <label class="h3" for="radius">{settings.points.length ? uk.radiusDefault : uk.radius}: <b>{settings.radiusKm} {uk.km}</b></label>
       <input
         id="radius"
         type="range"
@@ -219,6 +241,10 @@ $effect(() => {
       <label class="check">
         <input type="checkbox" checked={settings.hotspots} onchange={(e) => onchange({ hotspots: e.currentTarget.checked })} />
         {uk.hotspots}
+      </label>
+      <label class="check">
+        <input type="checkbox" checked={settings.showTrails} onchange={(e) => onchange({ showTrails: e.currentTarget.checked })} />
+        {uk.showTrails}
       </label>
       <h3 id="theme-label" class="sub">{uk.theme}</h3>
       <div class="seg" role="radiogroup" aria-labelledby="theme-label">

@@ -223,6 +223,26 @@ describe('PushService', () => {
     expect(send).not.toHaveBeenCalled()
   })
 
+  it("a point's own zone overrides the default one", async () => {
+    // Passes 8 km east of the city, heading north.
+    const passing = incoming({
+      position: destination(destination(ZAPORIZHZHIA, 90, 8), 180, 40),
+      headingDeg: 0,
+      placeName: null,
+    })
+    const wide = setup()
+    wide.svc.subscribe(sub('https://push/1', { points: [{ name: 'Дім', ...ZAPORIZHZHIA }] }))
+    await wide.svc.onTrack(passing)
+    expect(wide.send).toHaveBeenCalledOnce() // default 15 km zone
+
+    const tight = setup()
+    tight.svc.subscribe(
+      sub('https://push/1', { points: [{ name: 'Дім', ...ZAPORIZHZHIA, radiusKm: 3 }] }),
+    )
+    await tight.svc.onTrack(passing)
+    expect(tight.send).not.toHaveBeenCalled()
+  })
+
   it('"already near" wording inside the radius', async () => {
     const { svc, send } = setup()
     svc.subscribe(sub('https://push/1'))

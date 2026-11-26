@@ -52,7 +52,7 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
   shahed: p({
     speedKmh: 180,
     maxSpeedKmh: 250,
-    ttlMin: 25,
+    ttlMin: 15,
     maxExtrapolationMin: 10,
     processNoise: 0.5,
     moving: true,
@@ -63,7 +63,7 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
   jet_drone: p({
     speedKmh: 370,
     maxSpeedKmh: 600,
-    ttlMin: 12,
+    ttlMin: 6,
     maxExtrapolationMin: 5,
     processNoise: 2,
     moving: true,
@@ -74,7 +74,7 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
   molniya: p({
     speedKmh: 120,
     maxSpeedKmh: 300,
-    ttlMin: 12,
+    ttlMin: 8,
     maxExtrapolationMin: 5,
     processNoise: 1.5,
     moving: true,
@@ -85,7 +85,7 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
   fpv: p({
     speedKmh: 110,
     maxSpeedKmh: 180,
-    ttlMin: 8,
+    ttlMin: 5,
     maxExtrapolationMin: 3,
     processNoise: 3,
     moving: true,
@@ -96,7 +96,7 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
   cruise_missile: p({
     speedKmh: 850,
     maxSpeedKmh: 1080,
-    ttlMin: 10,
+    ttlMin: 6,
     maxExtrapolationMin: 4,
     processNoise: 4,
     moving: true,
@@ -129,7 +129,7 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
   recon_drone: p({
     speedKmh: 110,
     maxSpeedKmh: 150,
-    ttlMin: 30,
+    ttlMin: 20,
     maxExtrapolationMin: 8,
     processNoise: 1,
     moving: true,
@@ -151,7 +151,7 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
   helicopter: p({
     speedKmh: 200,
     maxSpeedKmh: 300,
-    ttlMin: 15,
+    ttlMin: 10,
     maxExtrapolationMin: 5,
     processNoise: 2,
     moving: true,
@@ -195,7 +195,7 @@ export const THREAT_PROFILES: Record<ThreatType, ThreatProfile> = {
   unknown: p({
     speedKmh: 150,
     maxSpeedKmh: 400,
-    ttlMin: 15,
+    ttlMin: 10,
     maxExtrapolationMin: 6,
     processNoise: 1,
     moving: true,

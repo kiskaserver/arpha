@@ -1,6 +1,7 @@
 <script lang="ts">
 import { type FeedItem, threatLabelUk } from '@arpha/shared'
 import { formatAgo, formatDistance, formatEta } from '../lib/format'
+import { isQuiet } from '../lib/frame'
 import { uk } from '../lib/i18n'
 import { clampHeight, pickSnap, type Snap, snapHeights, toggleSnap } from '../lib/sheet'
 import type { ThreatRow } from '../lib/view'
@@ -143,7 +144,7 @@ function openTab(t: typeof tab) {
     {:else}
     <ul id="threat-list" class="scroll list" data-testid="threat-list">
       {#each rows as r (r.track.id)}
-        <li class:done={r.track.status !== 'active'}>
+        <li class:done={r.track.status !== 'active'} class:quiet={r.track.status === 'active' && isQuiet(r.track, now)}>
           <button type="button" onclick={() => onselect(r.track.id)} data-testid="threat-row">
             <ThreatIcon type={r.track.type} heading={r.track.headingDeg} />
             <span class="main">
@@ -152,7 +153,11 @@ function openTab(t: typeof tab) {
                 {#if r.track.status === 'destroyed'}{uk.statusDestroyed} ·
                 {:else if r.track.status === 'lost'}{uk.statusLost} ·{/if}
                 {r.track.placeName ?? r.track.target?.name ?? uk.noPosition}
-                · {formatAgo(r.track.updatedAt, now)}
+                {#if r.track.status === 'active' && isQuiet(r.track, now)}
+                  · <span class="quiet">{uk.quiet(Math.round((now - r.track.updatedAt) / 60_000))}</span>
+                {:else}
+                  · {formatAgo(r.track.updatedAt, now)}
+                {/if}
               </span>
             </span>
             {#if r.track.status === 'active'}
@@ -289,6 +294,12 @@ function openTab(t: typeof tab) {
   }
   .list button:hover {
     filter: brightness(1.08);
+  }
+  .quiet :global(svg) {
+    opacity: 0.55;
+  }
+  span.quiet {
+    color: var(--warn, #b26b00);
   }
   .done {
     opacity: 0.55;

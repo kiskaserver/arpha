@@ -19,6 +19,7 @@ import {
   type Settings,
   type SoundCategory,
   saveSettings,
+  zoneOf,
 } from './lib/settings'
 import { playSound, speak, unlockAudio, vibrate } from './lib/sound'
 import { applyEvent, initialState } from './lib/state'
@@ -82,7 +83,8 @@ const watched = $derived(
 const rows = $derived.by(() => {
   void version
   const visible = [...live.tracks.values()].filter((t) => isVisible(t, now, settings.lingerMin))
-  return threatRows(visible, watched[0] ?? null, now, settings.radiusKm)
+  const ref = watched[0] ?? null
+  return threatRows(visible, ref, now, zoneOf(ref, settings))
 })
 const alerts = $derived.by(() => {
   void version
@@ -140,6 +142,7 @@ function updateSettings(patch: Partial<Settings>) {
     refreshMyAreas()
   }
   if ('lingerMin' in patch) map?.setLinger(settings.lingerMin)
+  if ('showTrails' in patch) map?.setShowTrails(settings.showTrails)
   if ('hotspots' in patch) void refreshHotspots()
   const pushRelevant = ['points', 'radiusKm', 'pushAlerts', 'pushThreats', 'classes']
   if (settings.pushEnabled && pushRelevant.some((k) => k in patch)) void togglePush(true)
@@ -243,7 +246,9 @@ async function togglePush(on: boolean) {
     return
   }
   const res = await enablePush({
-    points: settings.points.map(({ name, lat, lon }) => ({ name, lat, lon })),
+    points: settings.points.map(({ name, lat, lon, radiusKm }) =>
+      radiusKm ? { name, lat, lon, radiusKm } : { name, lat, lon },
+    ),
     radiusKm: settings.radiusKm,
     alerts: settings.pushAlerts,
     threats: settings.pushThreats,
@@ -346,6 +351,7 @@ onMount(() => {
       map.setPoints(settings.points, settings.radiusKm)
       map.setInfra(live.infra)
       map.setLinger(settings.lingerMin)
+      map.setShowTrails(settings.showTrails)
       map.setMe(me)
       // The user may have started picking a point before the map finished loading.
       map.setPicking(picking)

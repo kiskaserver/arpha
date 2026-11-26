@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import type { AlertsState, FeedItem, Track } from '@arpha/shared'
+import { type AlertsState, type FeedItem, OBLAST_FEATURE_ID, type Track } from '@arpha/shared'
 import { Boundaries } from './alerts/boundaries'
 import { AlertsService } from './alerts/service'
 import { EventBus } from './bus'
@@ -115,6 +115,9 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
         saveRoute(id, state)
         bus.publish({ type: 'track_removed', id })
       },
+      outside: (p) =>
+        boundaries.features.length > 0 &&
+        !boundaries.containing(p).some((f) => f.id === OBLAST_FEATURE_ID),
       // A duplicate folded into another track: its route lives on in the survivor.
       onMerge: (id) => {
         store.deleteTrack(id)
@@ -204,7 +207,7 @@ export function buildRuntime(config: Config, logger: Logger, o: RuntimeOverrides
   const demo = config.DEMO_MODE ? new DemoSimulator(tracker, gazetteer, now()) : null
 
   const app = createApp({
-    tracks: (): Track[] => tracker.tracks(),
+    tracks: (): Track[] => tracker.visible(now()),
     alerts: (): AlertsState => alerts.state,
     infra: () => infra.list(),
     feed: () => feed.list(),

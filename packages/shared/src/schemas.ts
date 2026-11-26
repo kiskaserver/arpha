@@ -13,7 +13,13 @@ export const pushSubscriptionSchema = z
     }),
     /** Named places to watch ("Дім", "Робота"). */
     points: z
-      .array(point.extend({ name: z.string().trim().min(1).max(40) }))
+      .array(
+        point.extend({
+          name: z.string().trim().min(1).max(40),
+          /** This point's own zone; falls back to the subscription's radiusKm. */
+          radiusKm: z.number().min(1).max(100).optional(),
+        }),
+      )
       .max(5)
       .default([]),
     /** Legacy single point. */

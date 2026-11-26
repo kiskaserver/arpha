@@ -88,11 +88,19 @@ test.describe('Арфа', () => {
     const points = page.getByTestId('points')
     await expect(points.getByRole('listitem')).toHaveCount(1)
     await expect(points.getByRole('textbox')).toHaveValue('Дім')
-    // The watched place shows on the map with its name.
+    // Each place has its own zone; the shared one becomes the default.
+    await points.getByTestId('point-zone').selectOption('5')
+    await expect(page.getByTestId('settings')).toContainText('Зона за замовчуванням')
+    // The legend lives behind the "i" button, not in settings.
+    await expect(
+      page.getByTestId('settings').getByRole('button', { name: 'Умовні позначки' }),
+    ).toHaveCount(0)
     await page.keyboard.press('Escape')
     // Preferences persist across reloads.
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await page.getByTestId('open-settings').click()
+    await expect(page.getByTestId('point-zone')).toHaveValue('5')
   })
 
   test('legend explains every symbol in Ukrainian', async ({ page }) => {

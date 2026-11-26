@@ -21,6 +21,12 @@ export const fc = (features: Feature[]): GeoJSON.FeatureCollection => ({
   features,
 })
 
+/** An active threat no source has mentioned for longer than its dead-reckoning horizon. */
+export function isQuiet(t: Track, now: number): boolean {
+  const horizon = Math.max(THREAT_PROFILES[t.type].maxExtrapolationMin, 3) * 60_000
+  return now - t.updatedAt > horizon
+}
+
 /** Degrees between a course and the bearing to a point (0 = dead ahead, 180 = behind). */
 function offCourse(from: LatLon, heading: number, to: LatLon): number {
   return Math.abs(((bearingDeg(from, to) - heading + 540) % 360) - 180)
@@ -63,10 +69,19 @@ export interface FrameInput {
   now: number
   selected: string | null
   lingerMin: number
+  /** Draw every threat's trail, not only the selected one's. */
+  showTrails?: boolean
 }
 
 /** Build the per-frame GeoJSON (pure; unit-tested). Call `motion.advance(now)` first. */
-export function buildFrame({ tracks, motion, now, selected, lingerMin }: FrameInput) {
+export function buildFrame({
+  tracks,
+  motion,
+  now,
+  selected,
+  lingerMin,
+  showTrails = false,
+}: FrameInput) {
   const points: Feature[] = []
   const vectors: Feature[] = []
   const targets: Feature[] = []
@@ -114,9 +129,9 @@ export function buildFrame({ tracks, motion, now, selected, lingerMin }: FrameIn
     }
     const moving = isExtrapolating(t, now)
     // Where it has been: the reported villages, joined up to where it is now.
-    const trail = t.trail ?? []
+    const sel = t.id === selected
+    const trail = sel || showTrails ? (t.trail ?? []) : []
     if (trail.length) {
-      const sel = t.id === selected
       trails.push({
         type: 'Feature',
         geometry: {
@@ -146,6 +161,8 @@ export function buildFrame({ tracks, motion, now, selected, lingerMin }: FrameIn
         rotate: pose.heading ?? 0,
         label: t.count && t.count > 1 ? `×${t.count}` : '',
         selected: t.id === selected,
+        // Silent for longer than it can be dead-reckoned: we no longer know where it is.
+        quiet: t.status === 'active' && isQuiet(t, now),
       },
     })
     if (moving && pose.heading !== null && t.speedKmh) {

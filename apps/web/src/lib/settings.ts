@@ -7,7 +7,13 @@ export type SoundCategory = 'alert' | 'ballistic' | 'threat'
 export interface SavedPoint extends LatLon {
   id: string
   name: string
+  /** This place's own zone, km; absent = the default radiusKm. */
+  radiusKm?: number
 }
+
+/** The zone that applies to a point. */
+export const zoneOf = (p: { radiusKm?: number } | null | undefined, s: { radiusKm: number }) =>
+  p?.radiusKm ?? s.radiusKm
 
 export interface Settings {
   /** Watched places ("Дім", "Робота"); the first one is the reference for ETA in the list. */
@@ -28,6 +34,8 @@ export interface Settings {
   speak: boolean
   /** How long destroyed/lost targets stay on the map, minutes (0 = disappear at once). */
   lingerMin: number
+  /** Draw where every threat has been (otherwise only the selected one). */
+  showTrails: boolean
   /** Show where threats were reported most in the last 30 days. */
   hotspots: boolean
 }
@@ -45,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   flash: false,
   speak: false,
   lingerMin: 2,
+  showTrails: false,
   hotspots: false,
 }
 
@@ -77,7 +86,16 @@ export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStor
     s.points = (Array.isArray(s.points) ? s.points : [])
       .filter(validPoint)
       .slice(0, MAX_POINTS)
-      .map((p) => ({ ...p, id: p.id || newPointId() }))
+      .map((p) => {
+        const r = Number(p.radiusKm)
+        const { radiusKm: _, ...rest } = p
+        return {
+          ...rest,
+          id: p.id || newPointId(),
+          ...(r >= 1 && r <= 100 ? { radiusKm: Math.round(r) } : {}),
+        }
+      })
+    s.showTrails = s.showTrails === true
     s.radiusKm = Math.min(100, Math.max(1, Number(s.radiusKm) || DEFAULT_SETTINGS.radiusKm))
     if (!['auto', 'light', 'dark'].includes(s.theme)) s.theme = 'auto'
     s.classes = (Array.isArray(s.classes) ? s.classes : DEFAULT_SETTINGS.classes).filter((c) =>

@@ -8,7 +8,14 @@ import {
   formatEta,
   formatSpeed,
 } from '../src/lib/format'
-import { buildFrame, circlePolygon, frameInterval, isVisible, kmPerPixel } from '../src/lib/frame'
+import {
+  buildFrame,
+  circlePolygon,
+  frameInterval,
+  isQuiet,
+  isVisible,
+  kmPerPixel,
+} from '../src/lib/frame'
 import { plural, uk } from '../src/lib/i18n'
 import { iconSvg, infraSvg, THREAT_COLORS } from '../src/lib/icons'
 import { FOLLOW_TAU_S, MotionModel } from '../src/lib/motion'
@@ -18,6 +25,7 @@ import {
   loadSettings,
   prefersDark,
   saveSettings,
+  zoneOf,
 } from '../src/lib/settings'
 import { applyEvent, initialState, isStreamEvent } from '../src/lib/state'
 import { alertedFeatures, alertLevel, threatRows } from '../src/lib/view'
@@ -379,31 +387,56 @@ describe('frame', () => {
     expect(f.selectedPose!.uncertaintyKm).toBeCloseTo(3.8, 5)
   })
 
-  it('draws where a threat has been, naming the villages only for the selected one', () => {
+  it('draws where the selected threat has been; every threat only on request', () => {
     const trail = [
       { name: 'Таврійське', lat: 47.653, lon: 35.695, at: NOW - 600_000 },
       { name: 'Комишуваха', lat: 47.715, lon: 35.524, at: NOW - 300_000 },
     ]
     const tracks = [track({ id: 'a', trail }), track({ id: 'b', trail })]
-    const f = buildFrame({
-      tracks,
-      motion: new MotionModel(),
-      now: NOW,
-      selected: 'a',
-      lingerMin: 0,
-    })
-    expect(f.trails).toHaveLength(2)
+    const frame = (showTrails: boolean) =>
+      buildFrame({
+        tracks,
+        motion: new MotionModel(),
+        now: NOW,
+        selected: 'a',
+        lingerMin: 0,
+        showTrails,
+      })
+    const f = frame(false)
+    expect(f.trails).toHaveLength(1)
     // The line ends at the icon, so the path joins up with where it is now.
     const line = f.trails[0]!.geometry as GeoJSON.LineString
-    expect(line.coordinates).toHaveLength(3)
     const here = tracks[0]!.position!
+    expect(line.coordinates).toHaveLength(3)
     expect(line.coordinates.at(-1)).toEqual([here.lon, here.lat])
-    const labels = f.trailPoints.map((p) => p.properties.label)
-    expect(labels).toEqual(['Таврійське', 'Комишуваха', '', ''])
+    expect(f.trailPoints.map((p) => p.properties.label)).toEqual(['Таврійське', 'Комишуваха'])
     // The latest place wins a label collision.
     expect(f.trailPoints[1]!.properties.order).toBeLessThan(
       f.trailPoints[0]!.properties.order as number,
     )
+    // With the setting on, the others get an unlabelled path too.
+    const all = frame(true)
+    expect(all.trails).toHaveLength(2)
+    expect(all.trailPoints.map((p) => p.properties.label)).toEqual([
+      'Таврійське',
+      'Комишуваха',
+      '',
+      '',
+    ])
+  })
+
+  it('fades a threat nobody has mentioned for longer than it can be dead-reckoned', () => {
+    const quietAt = (min: number) =>
+      buildFrame({
+        tracks: [track({ id: 'q', updatedAt: NOW })],
+        motion: new MotionModel(),
+        now: NOW + min * 60_000,
+        selected: null,
+        lingerMin: 0,
+      }).points[0]!.properties.quiet
+    expect(quietAt(2)).toBe(false)
+    expect(quietAt(12)).toBe(true) // shahed: 10 min horizon
+    expect(isQuiet(track({ updatedAt: NOW }), NOW + 12 * 60_000)).toBe(true)
   })
 
   it('falls back to the raw position when motion has no entry', () => {
@@ -451,6 +484,27 @@ describe('settings', () => {
     expect(loaded.sounds).toEqual({ alert: 'chime', ballistic: 'siren', threat: 'off' })
     expect(loaded.classes).toEqual(['kab'])
     expect(loaded.points.map((p) => p.name)).toEqual(['Дім'])
+  })
+
+  it('keeps a valid per-point zone and drops a broken one', () => {
+    const s = mem()
+    s.setItem(
+      'arpha:settings:v1',
+      JSON.stringify({
+        radiusKm: 15,
+        showTrails: 'yes',
+        points: [
+          { id: 'a', name: 'Дім', lat: 47.8, lon: 35.1, radiusKm: 5 },
+          { id: 'b', name: 'Робота', lat: 47.85, lon: 35.15, radiusKm: 999 },
+        ],
+      }),
+    )
+    const loaded = loadSettings(s)
+    expect(loaded.points[0]!.radiusKm).toBe(5)
+    expect(loaded.points[1]!.radiusKm).toBeUndefined()
+    expect(zoneOf(loaded.points[0], loaded)).toBe(5)
+    expect(zoneOf(loaded.points[1], loaded)).toBe(15)
+    expect(loaded.showTrails).toBe(false)
   })
 
   it('migrates the single point of v1', () => {

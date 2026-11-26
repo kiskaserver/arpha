@@ -26,6 +26,7 @@ export interface MapCallbacks {
 
 export interface MapPoint extends LatLon {
   name: string
+  radiusKm?: number
 }
 
 /**
@@ -50,6 +51,7 @@ export class MapController {
   #routes: { fromLat: number; fromLon: number; toLat: number; toLon: number; count: number }[] = []
   #hotspots: Hotspot[] | null = null
   #lingerMin = 2
+  #showTrails = false
   #picking = false
   #raf = 0
   #timer: ReturnType<typeof setTimeout> | null = null
@@ -144,12 +146,17 @@ export class MapController {
     // Ukrainian, legible basemap labels: one language, solid halo (people complained the
     // labels "doubled" and were hard to read).
     for (const layer of map.getStyle().layers ?? []) {
-      if (layer.type === 'symbol' && map.getLayoutProperty(layer.id, 'text-field')) {
-        map.setLayoutProperty(layer.id, 'text-field', [
-          'coalesce',
-          ['get', 'name:uk'],
-          ['get', 'name'],
-        ])
+      const field = layer.type === 'symbol' ? map.getLayoutProperty(layer.id, 'text-field') : null
+      if (field) {
+        // Road shields show the road number ("М-18"), not a name: rewriting them left
+        // empty plates on every highway.
+        if (!JSON.stringify(field).includes('"ref"')) {
+          map.setLayoutProperty(layer.id, 'text-field', [
+            'coalesce',
+            ['get', 'name:uk'],
+            ['get', 'name'],
+          ])
+        }
         map.setPaintProperty(layer.id, 'text-halo-width', 1.6)
         map.setPaintProperty(layer.id, 'text-halo-color', this.#dark ? '#0b1220' : '#ffffff')
       }
@@ -509,7 +516,15 @@ export class MapController {
         'text-ignore-placement': true,
       },
       paint: {
-        'icon-opacity': ['match', ['get', 'status'], 'active', 1, 0.45],
+        // Finished, or silent past its dead-reckoning horizon: we no longer know where it is.
+        'icon-opacity': [
+          'case',
+          ['!=', ['get', 'status'], 'active'],
+          0.45,
+          ['get', 'quiet'],
+          0.5,
+          1,
+        ],
         'text-color': '#fff',
         'text-halo-color': '#0b1220',
         'text-halo-width': 2,
@@ -576,7 +591,7 @@ export class MapController {
     const features: Feature[] = this.#points.flatMap((p) => [
       {
         type: 'Feature',
-        geometry: circlePolygon(p, this.#radiusKm),
+        geometry: circlePolygon(p, p.radiusKm ?? this.#radiusKm),
         properties: { kind: 'radius' },
       },
       {
@@ -672,6 +687,11 @@ export class MapController {
     ;(this.#map.getSource('routes') as GeoJSONSource).setData(fc(features))
   }
 
+  setShowTrails(on: boolean): void {
+    this.#showTrails = on
+    this.invalidate()
+  }
+
   setLinger(min: number): void {
     this.#lingerMin = min
     this.invalidate()
@@ -726,6 +746,7 @@ export class MapController {
       now,
       selected: this.#selected,
       lingerMin: this.#lingerMin,
+      showTrails: this.#showTrails,
     })
     const set = (id: string, features: Feature[]) =>
       (this.#map.getSource(id) as GeoJSONSource).setData(fc(features))

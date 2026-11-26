@@ -5,7 +5,7 @@ export type PushResult =
   | { ok: false; reason: 'unsupported' | 'denied' | 'unavailable' | 'failed' }
 
 export interface PushPrefs {
-  points: (LatLon & { name: string })[]
+  points: (LatLon & { name: string; radiusKm?: number })[]
   radiusKm: number
   alerts: boolean
   threats: boolean

@@ -124,7 +124,7 @@ export class Notifier {
       return
     }
     for (const p of points) {
-      const a = computeApproach(track, p, now, s.radiusKm)
+      const a = computeApproach(track, p, now, p.radiusKm ?? s.radiusKm)
       if (!a || a.etaMin === null || a.etaMin > THREAT_ETA_MIN) continue
       const label = threatLabelUk(track.type, track.count)
       const eta = a.etaMin === 0 ? 'поруч' : `через ${formatMinutesUk(a.etaMin)}`

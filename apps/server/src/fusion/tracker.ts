@@ -70,6 +70,8 @@ export interface TrackerHooks {
   onRemove?(id: string, state: TrackState): void
   /** `id` turned out to be the same object as `into` and was folded into it. */
   onMerge?(id: string, into: string): void
+  /** Whether a point lies outside the covered oblast (objects that left it are dropped). */
+  outside?(p: LatLon): boolean
 }
 
 /** Below this, the filter's velocity is noise, not a course. */
@@ -77,7 +79,18 @@ const MIN_REPORTED_SPEED_KMH = 25
 /** Base association gate, km — reports name the nearest village, not the object. */
 const BASE_GATE_KM = 20
 const DESTROYED_LINGER_MS = 90_000
-const LOST_LINGER_MS = 60_000
+/**
+ * A lost object (no reports, "зник", "без фіксації") often reappears minutes or hours
+ * later in the same reply thread. Its state is kept this long so it comes back with its
+ * history instead of as a new track; clients stop showing it after their linger setting.
+ */
+const REVIVE_MS = 2 * 3_600_000
+/** Without an explicit link, only a recently lost object is revived by proximity. */
+const SPATIAL_REVIVE_MS = 10 * 60_000
+/** Last seen outside the oblast and silent this long: it flew away ("на Дніпропетровщину"). */
+const LEFT_REGION_MS = 2 * 60_000
+/** Finished tracks older than this are not sent to clients any more. */
+const SHOWN_AFTER_END_MS = 15 * 60_000
 const MAX_SOURCES = 6
 /** Places sent to clients to draw where the object has been. */
 const TRAIL_POINTS = 15
@@ -143,6 +156,13 @@ export class Tracker {
 
   active(): Track[] {
     return this.tracks().filter((t) => t.status === 'active')
+  }
+
+  /** What clients need: everything active, plus recently ended tracks (not dormant ones). */
+  visible(now: number): Track[] {
+    return this.tracks().filter(
+      (t) => t.status === 'active' || now - t.updatedAt <= SHOWN_AFTER_END_MS,
+    )
   }
 
   briefs(now: number): TrackBrief[] {
@@ -248,8 +268,13 @@ export class Tracker {
         this.#hooks.onRemove?.(s.track.id, s)
         continue
       }
+      if (s.track.status !== 'active') continue
       const ttl = THREAT_PROFILES[s.track.type].ttlMin * 60_000
-      if (s.track.status === 'active' && now - s.lastObsAt > ttl) this.#setStatus(s, 'lost', now)
+      const last = s.path.at(-1)
+      const left =
+        last && now - s.lastObsAt > LEFT_REGION_MS && this.#hooks.outside?.(last) === true
+      // A lost object stays revivable (REVIVE_MS) if it turns up again.
+      if (left || now - s.lastObsAt > ttl) this.#setStatus(s, 'lost', now)
     }
     // Two channels' tracks often converge between reports (both dead-reckon to the same
     // named target), so look for duplicates on the clock too, not only on updates.
@@ -325,8 +350,18 @@ export class Tracker {
     point: LatLon | null,
     used: Set<string>,
   ): TrackState | null {
+    const at = ctx.observedAt
+    const compatible = (s: TrackState | undefined): s is TrackState =>
+      !!s && typesCompatible(s.track.type, ev.type)
+    // Explicit links (model id, reply chain) may wake a lost object up to two hours later.
     const usable = (s: TrackState | undefined): s is TrackState =>
-      !!s && s.track.status === 'active' && typesCompatible(s.track.type, ev.type)
+      compatible(s) &&
+      (s.track.status === 'active' ||
+        (s.track.status === 'lost' && at - s.track.updatedAt <= REVIVE_MS))
+    // Proximity alone only for something lost minutes ago.
+    const nearby = (s: TrackState): boolean =>
+      s.track.status === 'active' ||
+      (s.track.status === 'lost' && at - s.track.updatedAt <= SPATIAL_REVIVE_MS)
 
     // 1. The model linked it explicitly.
     if (ev.track_id) {
@@ -342,7 +377,9 @@ export class Tracker {
       return this.#nearest(freeParents, point, ctx.observedAt) ?? freeParents[0]!
 
     // 3. Spatial gating against everything compatible.
-    const candidates = [...this.#states.values()].filter((s) => usable(s) && !used.has(s.track.id))
+    const candidates = [...this.#states.values()].filter(
+      (s) => compatible(s) && nearby(s) && !used.has(s.track.id),
+    )
     if (!point) {
       const target = ev.towardPlace?.name
       if (!target) return null
@@ -446,6 +483,12 @@ export class Tracker {
   }
 
   #update(state: TrackState, ev: ResolvedEvent, ctx: ApplyContext, obs: Observation | null): void {
+    if (state.track.status === 'lost') {
+      // It reappeared: same object, same history, fresh filter from this report.
+      state.removeAt = null
+      state.kf = null
+      state.track = { ...state.track, status: 'active', speedKmh: null, headingDeg: null }
+    }
     const at = Math.max(ctx.observedAt, state.track.stateAt)
     // A generic "unknown" report must not downgrade a specific type, but a specific one upgrades it.
     const type: ThreatType = state.track.type === 'unknown' ? ev.type : state.track.type
@@ -580,7 +623,7 @@ export class Tracker {
     // Freeze the icon where we last believed it was.
     const position = state.kf ? this.#predicted(state, now).point : state.track.position
     state.kf = null
-    state.removeAt = now + (status === 'destroyed' ? DESTROYED_LINGER_MS : LOST_LINGER_MS)
+    state.removeAt = now + (status === 'destroyed' ? DESTROYED_LINGER_MS : REVIVE_MS)
     state.track = {
       ...state.track,
       status,

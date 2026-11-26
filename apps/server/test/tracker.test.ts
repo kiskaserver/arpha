@@ -209,15 +209,72 @@ describe('Tracker', () => {
     expect(tracker.get(a!)!.sources.map((s) => s.channel)).toEqual(['other', 'test_channel'])
   })
 
-  it('expires silent tracks after their TTL', () => {
+  it('expires silent tracks after their TTL, keeps them revivable, then drops them', () => {
+    const { tracker, onRemove } = setup()
+    const [a] = tracker.apply([resolved({ location: 'Оріхів' })], ctx(0))
+    tracker.tick(min(10))
+    expect(tracker.get(a!)!.status).toBe('active')
+    tracker.tick(min(16)) // shahed: 15 min of silence
+    expect(tracker.get(a!)!.status).toBe('lost')
+    // Clients see it for a while, then it is dormant but still known.
+    expect(tracker.visible(min(20)).map((t) => t.id)).toContain(a)
+    expect(tracker.visible(min(40)).map((t) => t.id)).not.toContain(a)
+    tracker.tick(min(60))
+    expect(tracker.get(a!)).toBeDefined()
+    tracker.tick(min(16 + 121))
+    expect(tracker.get(a!)).toBeUndefined()
+    expect(onRemove).toHaveBeenCalledWith(a, expect.anything())
+  })
+
+  it('a lost object that reappears in its reply thread an hour later comes back with its history', () => {
+    const { tracker } = setup()
+    const [a] = tracker.apply([resolved({ location: 'Оріхів', heading: 'N' })], ctx(0))
+    tracker.tick(min(20))
+    expect(tracker.get(a!)!.status).toBe('lost')
+    const [b] = tracker.apply(
+      [resolved({ action: 'update', location: 'Балабине' })],
+      ctx(80, { parentTrackIds: [a!] }),
+    )
+    expect(b).toBe(a)
+    const t = tracker.get(a!)!
+    expect(t.status).toBe('active')
+    expect(t.trail!.map((p) => p.name)).toEqual(['Оріхів', 'Балабине'])
+  })
+
+  it('without a link, only an object lost minutes ago is revived by proximity', () => {
     const { tracker } = setup()
     const [a] = tracker.apply([resolved({ location: 'Оріхів' })], ctx(0))
-    tracker.tick(min(20))
+    tracker.tick(min(16))
+    // 4 minutes later, right there: the same one.
+    const [b] = tracker.apply([resolved({ location: 'Оріхів' })], ctx(20))
+    expect(b).toBe(a)
+    tracker.tick(min(36))
+    // Half an hour after it was lost: a new object.
+    const [c] = tracker.apply([resolved({ location: 'Оріхів' })], ctx(70))
+    expect(c).not.toBe(a)
+  })
+
+  it('a destroyed object is never revived', () => {
+    const { tracker } = setup()
+    const [a] = tracker.apply([resolved({ location: 'Оріхів' })], ctx(0))
+    tracker.apply([resolved({ action: 'destroyed' })], ctx(1, { parentTrackIds: [a!] }))
+    const [b] = tracker.apply(
+      [resolved({ action: 'update', location: 'Оріхів' })],
+      ctx(2, { parentTrackIds: [a!] }),
+    )
+    expect(b).not.toBe(a)
+  })
+
+  it('an object last seen outside the oblast is dropped after two quiet minutes', () => {
+    const tracker = new Tracker({ outside: (p) => p.lat > 47.95 })
+    const [a] = tracker.apply(
+      [resolved({ type: 'jet_drone', location: 'Вільнянськ', heading: 'N' })],
+      ctx(0),
+    )
+    tracker.tick(min(1))
     expect(tracker.get(a!)!.status).toBe('active')
-    tracker.tick(min(26))
+    tracker.tick(min(3))
     expect(tracker.get(a!)!.status).toBe('lost')
-    tracker.tick(min(28))
-    expect(tracker.get(a!)).toBeUndefined()
   })
 
   it('all-clear marks everything lost', () => {
