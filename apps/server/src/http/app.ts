@@ -211,6 +211,8 @@ export function createApp(d: AppDeps): Hono {
     app.use('*', async (c, next) => {
       await next()
       if (c.req.path.startsWith('/api/') || !c.res.ok) return
+      // Hono's MIME table lacks .geojson: as octet-stream it would not be compressed.
+      if (c.req.path.endsWith('.geojson')) c.res.headers.set('Content-Type', 'application/geo+json')
       c.res.headers.set(
         'Cache-Control',
         c.req.path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',

@@ -319,8 +319,9 @@ onMount(() => {
   const onScheme = () => settings.theme === 'auto' && map?.setTheme(media.matches)
   media.addEventListener('change', onScheme)
 
+  // Keep the event for our "Встановити" button, but don't suppress the browser's own
+  // install UI (preventDefault without prompt() only earns a console warning).
   const onInstall = (e: Event) => {
-    e.preventDefault()
     installPrompt = e as Event & { prompt(): Promise<void> }
   }
   addEventListener('beforeinstallprompt', onInstall)

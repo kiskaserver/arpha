@@ -1,12 +1,19 @@
 import { expect, type Page, test } from '@playwright/test'
 
-/** Collect page errors, ignoring third-party tile hiccups. */
+/**
+ * Collect page errors and browser warnings (deprecations, unused preloads),
+ * ignoring third-party tile hiccups.
+ */
 function trackErrors(page: Page): string[] {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('console', (m) => {
-    if (m.type() === 'error' && !/openfreemap|Failed to load resource/i.test(m.text()))
-      errors.push(m.text())
+    if (
+      (m.type() === 'error' || m.type() === 'warning') &&
+      // GL Driver Message: the headless software renderer, not the app.
+      !/openfreemap|Failed to load resource|GL Driver Message/i.test(m.text())
+    )
+      errors.push(`${m.type()}: ${m.text()}`)
   })
   return errors
 }
@@ -22,6 +29,8 @@ test.describe('Арфа', () => {
     await expect(page.getByTestId('threat-count')).toContainText(/загроз/)
     await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible()
     await expect(page.getByText('Завантаження карти…')).toBeHidden({ timeout: 30_000 })
+    // Chrome reports unused preloads a few seconds after load.
+    await page.waitForTimeout(3500)
     expect(errors).toEqual([])
   })
 

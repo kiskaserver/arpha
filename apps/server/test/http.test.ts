@@ -292,7 +292,13 @@ describe('HTTP API', () => {
     writeFileSync(join(dir, 'index.html'), '<!doctype html><title>Арфа</title>')
     writeFileSync(join(dir, 'assets', 'app-abc123.js'), 'console.log(1)')
     writeFileSync(join(dir, 'sw.js'), 'self')
+    writeFileSync(join(dir, 'boundaries.geojson'), JSON.stringify({ features: 'x'.repeat(4096) }))
     const app = createApp(deps({ webDist: dir }))
+
+    // GeoJSON gets its real type, so it is compressed like any JSON.
+    const geo = await app.request('/boundaries.geojson', { headers: { 'accept-encoding': 'gzip' } })
+    expect(geo.headers.get('content-type')).toBe('application/geo+json')
+    expect(geo.headers.get('content-encoding')).toBe('gzip')
 
     const asset = await app.request('/assets/app-abc123.js')
     expect(asset.headers.get('cache-control')).toContain('immutable')
