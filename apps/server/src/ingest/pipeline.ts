@@ -1,4 +1,11 @@
-import { haversineKm, inBbox, type LatLon, ZAPORIZHZHIA } from '@arpha/shared'
+import {
+  haversineKm,
+  inBbox,
+  type LatLon,
+  type ThreatType,
+  weaponSpec,
+  ZAPORIZHZHIA,
+} from '@arpha/shared'
 import type { Store } from '../db'
 import {
   type Extraction,
@@ -51,6 +58,8 @@ const MAX_AGE_MS = 3 * 60 * 60_000
 const MAX_JUMP_KM = 120
 /** Launch areas ("з Криму", "з Таганрогу", "з Курська") are farther than the oblast. */
 const MAX_ORIGIN_KM = 1500
+/** Margin on a ballistic missile's published range before a target counts as out of reach. */
+const BALLISTIC_REACH_SLACK = 1.1
 /**
  * Compass directions are not places: "з півночі" / "північні напрями" must not
  * fuzzy-match the village Північне 100 km south. Exact village names (Північне,
@@ -61,10 +70,29 @@ const DIRECTION_TOKEN = new RegExp(
     'північ|півночі|південь|півдня|півдні|схід|сходу|сході|захід|заходу|заході|' +
     '(?:північн|південн|східн|західн)(?:ий|ого|ому|им|ім|і|их|ими|е|а|ої|у)|північно|південно|' +
     // "північний перетин" / "межа областей": the oblast border, not a place.
-    'перетин|перетину|перетині|перетиння|межа|межі|областей)$',
+    'перетин|перетину|перетині|перетиння|межа|межі|областей|' +
+    // "ЛБЗ" (the front line) and a bare "ТОТ" (occupied territory) are areas, not places.
+    'лбз|тот)$',
   'u',
 )
 const DIRECTION_NAMED_PLACE = /^(?:північне|південне|східне|західне)$/u
+
+/**
+ * "Відбій по балістиці" ends ballistic warnings, not the drones still flying; a plain
+ * "Відбій тривоги" ends everything (undefined).
+ */
+export function clearScope(text: string): ThreatType[] | undefined {
+  const t = text.toLowerCase()
+  if (/тривог/.test(t)) return undefined
+  const types: ThreatType[] = []
+  if (/балісти/.test(t)) types.push('ballistic')
+  if (/ракет/.test(t)) types.push('ballistic', 'cruise_missile')
+  if (/(?:^|[^а-яіїєґ])каб(?!овоз)/.test(t)) types.push('kab')
+  if (/бпла|шахед|мопед|дрон|реактив/.test(t))
+    types.push('shahed', 'jet_drone', 'molniya', 'fpv', 'recon_drone', 'unknown')
+  if (/авіац|кабовоз|літак|борт/.test(t)) types.push('aircraft')
+  return types.length ? types : undefined
+}
 
 /** True when every word is a compass word or a preposition ("з південного заходу"). */
 export function isDirectionWord(name: string): boolean {
@@ -211,7 +239,12 @@ export class Pipeline {
         this.#resolve(ev, parentTrackIds, text, parentPlaces),
       )
       const ids = this.#d.tracker.apply(resolved, { message: msg, parentTrackIds, observedAt })
-      if (extraction.all_clear) this.#d.tracker.allClear(observedAt)
+      if (extraction.all_clear) {
+        // "Локаційно чисто" in reply to a thread is about that thread; a standalone
+        // "Відбій тривоги" clears the whole sky.
+        if (parentTrackIds.length) this.#d.tracker.endThread(parentTrackIds, observedAt)
+        else this.#d.tracker.allClear(observedAt, clearScope(text))
+      }
 
       const trackIds = [...new Set(ids.filter((id): id is string => id !== null))]
       save(extraction, trackIds)
@@ -272,12 +305,21 @@ export class Pipeline {
     ) {
       locationPlace = null
     }
-    return {
-      ...ev,
-      locationPlace,
-      fromPlace: look(ev.from, true),
-      towardPlace: look(ev.toward),
+    const fromPlace = look(ev.from, true)
+    let towardPlace = look(ev.toward)
+    // "Загроза балістики з Брянська" is the Air Force's nationwide warning relayed by every
+    // channel, not a missile on Запоріжжя: from that far it is out of the weapon's reach.
+    // Unless the post itself names the target, it is not a threat here (no track, no push).
+    if (ev.type === 'ballistic' && fromPlace && towardPlace) {
+      const range = (weaponSpec(ev.model, 'ballistic')?.rangeKm ?? 500) * BALLISTIC_REACH_SLACK
+      if (
+        haversineKm(fromPlace, towardPlace) > range &&
+        !this.#names(text, towardPlace.name, towardPlace)
+      ) {
+        towardPlace = null
+      }
     }
+    return { ...ev, locationPlace, fromPlace, towardPlace }
   }
 
   /** Whether the post text itself names `place` (directly, by an alias or slang). */

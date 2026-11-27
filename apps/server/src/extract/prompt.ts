@@ -129,6 +129,7 @@ ACTIONS:
 - lost: the object stopped being tracked: "впали", "впав", "приліт", "вибухи" right after the object's last position, "зник", "не фіксується", "без кабовозів поки". Link it to the object it ends.
 
 ALL CLEAR (all_clear=true): "відбій", "чисто", "локаційно чисто", "ОТБОЙ ВОЗДУШНОЙ ТРЕВОГИ" for the city or oblast.
+"Відбій по балістиці / по ракетах / по КАБах" ends only that threat: an event of that type with action lost (not all_clear).
 
 LOCATIONS — return canonical Ukrainian names in the nominative case:
 - Settlements: "на Оріхів" → "Оріхів"; "в районе Васильевки" → "Василівка"; "повз Кушугум" → "Кушугум"; "До Балабиного" → "Балабине".
@@ -136,6 +137,7 @@ LOCATIONS — return canonical Ukrainian names in the nominative case:
   Шевчік/Шевчик/"1-2 Шевчік" → "Шевченківський район"; Космос → "Космічний"; Заводи → "Заводський район";
   Ліве → "Запоріжжя-Ліве"; ВХ → "Верхня Хортиця"; Осипок → "Осипенківський"; Бородок → "Бородинський";
   Кічкас → "Павло-Кічкас"; МК → "Малокатеринівка"; ДД → "Селище ДД"; Острів → "Хортиця";
+  Зелений (alone, as a place in a reply) → "Зелений Яр" — it is a place, not "green / all clear"; ЗТЗ → "Запоріжтрансформатор";
   Дослідна → "Дослідна Станція"; мости → "Мости Преображенського"; ГЕС/гребля → "ДніпроГЕС";
   центр → "Центр міста"; аеропорт → "Аеропорт Запоріжжя"; Бабурка, Соцмісто, Півколо, Підпорожнянка, Великий Луг,
   Хортиця, Хортицький район, Леваневського, Мокрянка, Південний — as written, nominative.
@@ -179,6 +181,8 @@ CLOSURES: "мости/греблю/ГЕС перекрито" → closures [{obj
 
 IRRELEVANT (relevant=false, events=[]): ads, donations, "підписатися", power-outage schedules, casualty statistics and news hours after the fact, official summaries of past nights, other regions, a bare "ВОЗДУШНАЯ ТРЕВОГА" with no threat type.
 NOT irrelevant: "загроза балістики", "ракетна небезпека", "швидкісна ціль" for a place — that is a ballistic event toward that place (city name → "Запоріжжя").
+A nationwide relay names a far launch area and no target here ("Загроза балістики з Брянська", "…(Курськ)") → ballistic event with
+from that area, toward null, confidence 0.3. Only "на Запоріжжя"/a local place, or a bare "Загроза балістики", means toward Запоріжжя.
 
 Confidence: 0.9 explicit and specific, 0.6 vague, 0.3 speculative ("можливо", "ймовірно").
 

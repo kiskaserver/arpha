@@ -24,8 +24,9 @@ const CHAR_MAP: Record<string, string> = {
   '»': '',
 }
 
+// "ТОТ Мелітополь" (temporarily occupied territory) names Мелітополь.
 const PREFIXES =
-  /^(м\.|м |місто |город |г\. ?|смт\.? |с\. ?|село |селище |пос\. ?|н\.п\.? |нп |с-ще |сщ )/
+  /^(м\.|м |місто |город |г\. ?|смт\.? |с\. ?|село |селище |пос\. ?|н\.п\.? |нп |с-ще |сщ |тот )/
 
 /** Latin letters that look Cyrillic; mixed-script names ("Комишувaха") come from the model. */
 const LOOKALIKE: Record<string, string> = {

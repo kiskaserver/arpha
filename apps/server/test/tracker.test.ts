@@ -627,4 +627,21 @@ describe('Tracker', () => {
     tracker.tick(min(2))
     expect(tracker.active().filter((t) => t.type === 'shahed')).toHaveLength(2)
   })
+
+  it('KAB groups reported by several channels become one, with or without a position', () => {
+    const { tracker } = setup()
+    const on = (channel: string, at: number) => ({
+      message: message({ id: 1, channel, date: min(at) }),
+      parentTrackIds: [],
+      observedAt: min(at),
+    })
+    // Position-less launch announcements naming the same target.
+    tracker.apply([resolved({ type: 'kab', action: 'new', toward: 'Оріхів' })], on('a', 0))
+    tracker.apply([resolved({ type: 'kab', action: 'new', toward: 'Оріхів' })], on('b', 0.2))
+    expect(tracker.active().filter((t) => t.type === 'kab')).toHaveLength(1)
+    // Named at the same village by two channels.
+    tracker.apply([resolved({ type: 'kab', location: 'Магдалинівка' })], on('c', 1))
+    tracker.apply([resolved({ type: 'kab', location: 'Магдалинівка' })], on('d', 1.2))
+    expect(tracker.active().filter((t) => t.placeName === 'Магдалинівка')).toHaveLength(1)
+  })
 })

@@ -133,5 +133,48 @@
         }
       ]
     }
+  },
+  {
+    "name": "nationwide ballistic relay has no target here (real, 00:05)",
+    "text": "Загроза балістики з Брянська",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "ballistic",
+          "from": "Брянськ",
+          "toward": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "'Відбій по балістиці' ends the warning (real, 00:14)",
+    "text": "Відбій по Балістиці",
+    "parents": ["Загроза балістики з Брянська"],
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "ballistic",
+          "action": "lost"
+        }
+      ]
+    }
+  },
+  {
+    "name": "'Зелений' in a reply is Зелений Яр, not all-clear (real, 01:40)",
+    "text": "Зелений",
+    "parents": ["Гортоп"],
+    "expected": {
+      "relevant": true,
+      "all_clear": false,
+      "events": [
+        {
+          "action": "update",
+          "location": "Зелений Яр"
+        }
+      ]
+    }
   }
 ]

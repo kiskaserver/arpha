@@ -253,16 +253,25 @@ export class Tracker {
    */
   #mergeDuplicates(id: string, now: number): string {
     const a = this.#states.get(id)
-    if (a?.track.status !== 'active' || !a.kf) return id
+    if (a?.track.status !== 'active' || a.track.type === 'explosion') return id
     for (const b of this.#states.values()) {
-      if (b === a || b.track.status !== 'active' || !b.kf) continue
+      if (b === a || b.track.status !== 'active') continue
       if (!sameKind(a.track.type, b.track.type)) continue
       const pair =
         a.track.id < b.track.id ? `${a.track.id}|${b.track.id}` : `${b.track.id}|${a.track.id}`
       if (this.#distinct.has(pair)) continue
-      if (now - a.lastObsAt > MERGE_RECENT_MS || now - b.lastObsAt > MERGE_RECENT_MS) continue
-      if (haversineKm(this.#predicted(a, now).point, this.#predicted(b, now).point) > MERGE_KM)
+      if (now - a.track.updatedAt > MERGE_RECENT_MS || now - b.track.updatedAt > MERGE_RECENT_MS)
         continue
+      if (a.track.position && b.track.position) {
+        // Moving objects by their forecast, KAB groups and the like by where they were named.
+        if (haversineKm(this.#predicted(a, now).point, this.#predicted(b, now).point) > MERGE_KM)
+          continue
+      } else if (a.track.position || b.track.position) {
+        continue
+      } else if (!a.track.target || a.track.target.name !== b.track.target?.name) {
+        // Two position-less announcements: the same only when they name the same target.
+        continue
+      }
       const ha = a.track.headingDeg
       const hb = b.track.headingDeg
       if (ha !== null && hb !== null && Math.abs(((ha - hb + 540) % 360) - 180) > MERGE_HEADING_DEG)
@@ -311,10 +320,19 @@ export class Tracker {
     this.#emit(keep, keep.track.updatedAt)
   }
 
+  /** "Чисто" about one thread: its objects are gone, the rest of the sky is not. */
+  endThread(ids: string[], now: number): void {
+    for (const id of ids) {
+      const s = this.#state(id)
+      if (s?.track.status === 'active') this.#setStatus(s, 'lost', now)
+    }
+  }
+
   /** "Відбій" for the region: everything still in the air is considered gone. */
-  allClear(now: number): void {
+  allClear(now: number, only?: ThreatType[]): void {
     for (const s of this.#states.values()) {
       if (s.track.status !== 'active') continue
+      if (only && !only.includes(s.track.type)) continue
       this.#setStatus(s, 'lost', now)
     }
   }

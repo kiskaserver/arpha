@@ -25,7 +25,7 @@ interface Expected {
     type?: string
     action?: string
     location?: string | null
-    toward?: string
+    toward?: string | null
     place?: string
     from?: string | null
     count?: number
@@ -94,6 +94,7 @@ for (const c of cases) {
     if (e.location) checks.push(samePlace(g?.location, e.location))
     if (e.location === null) checks.push(g?.location == null)
     if (e.from === null) checks.push(g?.from == null)
+    if (e.toward === null) checks.push(g?.toward == null)
     if (e.altitude_m) checks.push(g?.altitude_m === e.altitude_m)
     if (e.toward) checks.push(samePlace(g?.toward, e.toward))
     if (e.place) checks.push(samePlace(g?.location, e.place) || samePlace(g?.toward, e.place))

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Store } from '../src/db'
 import type { Extraction, ExtractionInput, Extractor, RawMessage } from '../src/extract/types'
 import { Tracker } from '../src/fusion/tracker'
-import { isDirectionWord, Pipeline } from '../src/ingest/pipeline'
+import { clearScope, isDirectionWord, Pipeline } from '../src/ingest/pipeline'
 import { silentLogger } from '../src/logger'
 import { event, gazetteer, message, min } from './helpers'
 
@@ -192,6 +192,31 @@ describe('Pipeline', () => {
     expect(extract.mock.calls[0]![0].parents).toEqual([])
   })
 
+  it('"Локаційно чисто" in a reply ends that thread only; a standalone "відбій" clears all', async () => {
+    const { pipeline, tracker } = setup((i) =>
+      i.message.id === 3
+        ? { relevant: true, all_clear: true, closures: [], events: [] }
+        : i.message.id === 4
+          ? { relevant: true, all_clear: true, closures: [], events: [] }
+          : relevant(event({ location: i.message.id === 1 ? 'Оріхів' : 'Гуляйполе' })),
+    )
+    await pipeline.submit(message({ id: 1, text: 'шахед Оріхів' }))
+    await pipeline.submit(message({ id: 2, text: 'шахед Гуляйполе' }))
+    await pipeline.submit(message({ id: 3, text: 'Локаційно чисто', replyToId: 1, date: min(0.5) }))
+    expect(tracker.active().map((t) => t.placeName)).toEqual(['Гуляйполе'])
+    await pipeline.submit(message({ id: 4, text: 'Відбій тривоги', date: min(0.6) }))
+    expect(tracker.active()).toHaveLength(0)
+  })
+
+  it('"Відбій по балістиці" ends ballistic warnings, not the drones still flying', () => {
+    expect(clearScope('Відбій по Балістиці')).toEqual(['ballistic'])
+    expect(clearScope('Відбій тривоги в Запоріжжі')).toBeUndefined()
+    expect(clearScope('По БпЛА чисто')).toContain('shahed')
+    expect(clearScope('Локаційно чисто')).toBeUndefined()
+    expect(clearScope('Відбій по КАБах')).toEqual(['kab'])
+    expect(clearScope('Кабовози пішли, чисто')).toEqual(['aircraft'])
+  })
+
   it('all-clear clears the board', async () => {
     const { pipeline, tracker } = setup((i) =>
       i.message.id === 1
@@ -295,6 +320,23 @@ describe('Pipeline', () => {
     expect(isDirectionWord('Південноукраїнськ')).toBe(false)
     expect(isDirectionWord('північне перетиння')).toBe(true)
     expect(isDirectionWord('межа областей')).toBe(true)
+    expect(isDirectionWord('ЛБЗ')).toBe(true)
+  })
+
+  it('a nationwide relay ("загроза балістики з Брянська") is no threat to Запоріжжя', async () => {
+    const run = async (text: string, from: string) => {
+      const { pipeline, tracker } = setup(() =>
+        relevant(event({ type: 'ballistic', from, toward: 'Запоріжжя' })),
+      )
+      await pipeline.submit(message({ id: 1, text }))
+      return tracker.active().filter((t) => t.type === 'ballistic')
+    }
+    // ~600 km: beyond Iskander's reach, and the post names no target here.
+    expect(await run('Загроза балістики з Брянська', 'Брянськ')).toHaveLength(0)
+    // The same launch area, but the post itself names the city: keep it.
+    expect(await run('Балістика з Брянська на Запоріжжя!', 'Брянськ')).toHaveLength(1)
+    // Within reach: a threat as before.
+    expect(await run('Загроза балістики з Криму', 'Крим')).toHaveLength(1)
   })
 
   it('keeps launch areas outside the oblast as the origin', async () => {

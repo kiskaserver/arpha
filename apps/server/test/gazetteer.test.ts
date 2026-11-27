@@ -191,4 +191,12 @@ describe('GeoNames import', () => {
     expect(merged).toHaveLength(3)
     expect(merged.filter((m) => m.n === 'Запоріжжя').map((m) => m.lat)).toEqual([47.8, 48.5])
   })
+
+  it('"ТОТ Мелітополь" names Мелітополь; look-alike Latin letters are folded', () => {
+    expect(gz.lookup('ТОТ Мелітополь')?.name).toBe('Мелітополь')
+    expect(gz.lookup('Комишувaха')?.name).toBe('Комишуваха')
+    expect(gz.lookup("Кам'янського", { near: { lat: 47.5, lon: 34.6 } })?.name).toMatch(
+      /Кам.янське/,
+    )
+  })
 })
