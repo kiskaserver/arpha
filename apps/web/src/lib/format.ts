@@ -11,6 +11,14 @@ export function formatCourse(track: Track): string {
     : `${bearingToCompassUk(track.headingDeg)} (${track.headingDeg}°)`
 }
 
+/** "Оріхів / Таврійське": the goal and the alternatives the post gave. */
+export function targetNames(track: Track): string {
+  return [track.target, ...(track.altTargets ?? [])]
+    .filter((t) => t !== null)
+    .map((t) => t.name)
+    .join(' / ')
+}
+
 export function formatDistance(km: number): string {
   return km < 10 ? `${km.toFixed(1)} ${uk.km}` : `${Math.round(km)} ${uk.km}`
 }

@@ -117,13 +117,25 @@ export function buildFrame({
         })
       }
     }
+    // Alternative goals ("Оріхів/Таврійське") of the selected object, named on the map.
+    if (t.id === selected && t.status === 'active') {
+      for (const g of t.altTargets ?? []) {
+        predicted.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [g.lon, g.lat] },
+          properties: { label: g.name, p: 0.5, color },
+        })
+      }
+    }
     if (!t.position || !pose) {
       if (t.target && t.status === 'active') {
-        targets.push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [t.target.lon, t.target.lat] },
-          properties: { id: t.id, color },
-        })
+        for (const g of [t.target, ...(t.altTargets ?? [])]) {
+          targets.push({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [g.lon, g.lat] },
+            properties: { id: t.id, color },
+          })
+        }
       }
       continue
     }

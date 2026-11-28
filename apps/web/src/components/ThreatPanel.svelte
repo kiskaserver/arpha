@@ -1,6 +1,6 @@
 <script lang="ts">
 import { type FeedItem, threatLabelUk } from '@arpha/shared'
-import { formatAgo, formatDistance, formatEta } from '../lib/format'
+import { formatAgo, formatDistance, formatEta, targetNames } from '../lib/format'
 import { isQuiet } from '../lib/frame'
 import { uk } from '../lib/i18n'
 import { clampHeight, pickSnap, type Snap, snapHeights, toggleSnap } from '../lib/sheet'
@@ -166,7 +166,7 @@ function openTab(t: typeof tab) {
                   <span class="eta" class:hot={r.approach.etaMin !== null}>{formatEta(r.approach.etaMin)}</span>
                   <span class="dist">{formatDistance(r.approach.distanceKm)}</span>
                 {:else if r.track.target}
-                  <span class="eta hot">→ {r.track.target.name}</span>
+                  <span class="eta hot">→ {targetNames(r.track)}</span>
                 {/if}
               </span>
             {/if}

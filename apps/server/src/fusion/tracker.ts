@@ -38,6 +38,8 @@ export interface ResolvedEvent extends ExtractedEvent {
   locationPlace: Place | null
   fromPlace: Place | null
   towardPlace: Place | null
+  /** Alternative goals the post joined to `toward` with "/" ("Оріхів/Таврійське"). */
+  towardAlts?: Place[]
 }
 
 export interface ApplyContext {
@@ -238,6 +240,14 @@ export class Tracker {
         events
           .slice(0, i)
           .some((p, j) => ids[j] && p.type === ev.type && courseOnly(p) && slashed(p, ev))
+      if (alternative && ev.towardPlace) {
+        const first = events.findIndex((p, j) => j < i && ids[j] && courseOnly(p) && slashed(p, ev))
+        const s = this.#state(ids[first]!)
+        if (s) {
+          s.track = withAlt(s.track, ev.towardPlace)
+          this.#emit(s, ctx.observedAt)
+        }
+      }
       const id = alternative ? null : this.#applyOne(ev, ctx, used)
       if (id) used.add(id)
       ids.push(id)
@@ -312,6 +322,7 @@ export class Tracker {
       stateAt: fresher.track.stateAt,
       placeName: fresher.track.placeName,
       target: fresher.track.target ?? keep.track.target,
+      altTargets: fresher.track.target ? fresher.track.altTargets : keep.track.altTargets,
       origin: keep.track.origin ?? drop.track.origin,
       altitudeM: fresher.track.altitudeM ?? keep.track.altitudeM ?? drop.track.altitudeM ?? null,
       sources,
@@ -663,6 +674,7 @@ export class Tracker {
       uncertaintyKm: obs?.sigma ?? 0,
       placeName: obs?.name ?? null,
       target: toTarget(ev.towardPlace),
+      altTargets: alternatives(ev),
       origin: toTarget(ev.fromPlace),
       altitudeM: ev.altitude_m ?? null,
       prediction: null,
@@ -769,6 +781,8 @@ export class Tracker {
       uncertaintyKm: obs && !profile.moving ? obs.sigma : state.track.uncertaintyKm,
       placeName: obs?.name ?? state.track.placeName,
       target,
+      // A new goal brings its own alternatives (or none); without one the old ones stay.
+      altTargets: ev.towardPlace ? alternatives(ev) : state.track.altTargets,
       origin: toTarget(ev.fromPlace) ?? state.track.origin,
       altitudeM: ev.altitude_m ?? state.track.altitudeM ?? null,
     }
@@ -879,4 +893,14 @@ function maxKmh(type: ThreatType, model: string | null | undefined): number {
 
 function toTarget(place: Place | null): NamedPoint | null {
   return place ? { name: place.name, lat: place.lat, lon: place.lon } : null
+}
+
+function alternatives(ev: ResolvedEvent): NamedPoint[] | undefined {
+  const alts = (ev.towardAlts ?? []).filter((p) => p.name !== ev.towardPlace?.name)
+  return alts.length ? alts.map((p) => toTarget(p)!) : undefined
+}
+
+function withAlt(track: Track, place: Place): Track {
+  const known = [track.target, ...(track.altTargets ?? [])].some((t) => t?.name === place.name)
+  return known ? track : { ...track, altTargets: [...(track.altTargets ?? []), toTarget(place)!] }
 }

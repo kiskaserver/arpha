@@ -3,7 +3,13 @@ import { Store } from '../src/db'
 import { buildUserPrompt } from '../src/extract/prompt'
 import type { Extraction, ExtractionInput, Extractor, RawMessage } from '../src/extract/types'
 import { Tracker } from '../src/fusion/tracker'
-import { clearScope, isDirectionWord, Pipeline, quotedTracks } from '../src/ingest/pipeline'
+import {
+  clearScope,
+  isDirectionWord,
+  Pipeline,
+  quotedTracks,
+  slashPeers,
+} from '../src/ingest/pipeline'
 import { silentLogger } from '../src/logger'
 import { event, gazetteer, message, min } from './helpers'
 
@@ -297,6 +303,28 @@ describe('Pipeline', () => {
     const json = JSON.stringify({ eventTrackIds: ['ta', 'tb', 'tc'] })
     expect(quotedTracks('1 на Великий Луг від Михайлівки', events, json, parent)).toEqual(['tb'])
     expect(quotedTracks('2 вийшли на Дніпропетровщину', events, json, parent)).toEqual(['ta'])
+  })
+
+  it('"вектор Оріхів/Таврійське" keeps the second goal as an alternative', async () => {
+    const { pipeline, tracker } = setup(() =>
+      relevant(event({ type: 'kab', location: 'Нестерянка', toward: 'Оріхів' })),
+    )
+    await pipeline.submit(
+      message({ id: 1, text: 'КАБ проходять ЛБЗ над Нестерянкою вектор Оріхів/Таврійське' }),
+    )
+    const [t] = tracker.active()
+    expect(t!.target?.name).toBe('Оріхів')
+    expect(t!.altTargets?.map((g) => g.name)).toEqual(['Таврійське'])
+  })
+
+  it('finds the names a post joins with "/"', () => {
+    expect(slashPeers('вектор Оріхів/Таврійське', 'Оріхів')).toEqual(['Таврійське'])
+    expect(slashPeers('курс Аеропорт / Матвіївка / Балабине', 'Матвіївку')).toEqual([
+      'Аеропорт',
+      'Балабине',
+    ])
+    expect(slashPeers('курс на Оріхів', 'Оріхів')).toEqual([])
+    expect(slashPeers('Оріхів/Таврійське', '')).toEqual([])
   })
 
   it('a quote that names nothing known falls back to the whole parent', () => {

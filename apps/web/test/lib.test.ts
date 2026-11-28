@@ -7,6 +7,7 @@ import {
   formatDistance,
   formatEta,
   formatSpeed,
+  targetNames,
 } from '../src/lib/format'
 import {
   buildFrame,
@@ -109,6 +110,10 @@ describe('format', () => {
     expect(formatSpeed(track({ speedKmh: null }))).toBe('—')
     expect(formatCourse(track({ headingDeg: 315 }))).toBe('пн-зх (315°)')
     expect(formatCourse(track({ headingDeg: null }))).toBe('—')
+    const orikhiv = { name: 'Оріхів', lat: 47.576, lon: 35.783 }
+    const tavr = { name: 'Таврійське', lat: 47.653, lon: 35.695 }
+    expect(targetNames(track({ target: orikhiv, altTargets: [tavr] }))).toBe('Оріхів / Таврійське')
+    expect(targetNames(track({ target: orikhiv }))).toBe('Оріхів')
     expect(formatDistance(4.26)).toBe('4.3 км')
     expect(formatDistance(42.6)).toBe('43 км')
     expect(formatEta(null)).toBe('Курс не на вас')
@@ -385,6 +390,22 @@ describe('frame', () => {
     expect(f.targets).toHaveLength(1)
     expect(f.maxSpeed).toBe(180)
     expect(f.selectedPose!.uncertaintyKm).toBeCloseTo(3.8, 5)
+  })
+
+  it('alternative goals: named for the selected threat, marked for position-less ones', () => {
+    const m = new MotionModel()
+    const alt = { name: 'Таврійське', lat: 47.653, lon: 35.695 }
+    const orikhiv = { name: 'Оріхів', lat: 47.576, lon: 35.783 }
+    const tracks = [
+      track({ id: 'a', target: orikhiv, altTargets: [alt] }),
+      track({ id: 'b', position: null, target: orikhiv, altTargets: [alt] }),
+    ]
+    for (const t of tracks) m.upsert(t, NOW)
+    const f = buildFrame({ tracks, motion: m, now: NOW, selected: 'a', lingerMin: 2 })
+    expect(f.predicted.map((p) => p.properties.label)).toContain('Таврійське')
+    expect(f.targets).toHaveLength(2)
+    const none = buildFrame({ tracks, motion: m, now: NOW, selected: null, lingerMin: 2 })
+    expect(none.predicted.map((p) => p.properties.label)).not.toContain('Таврійське')
   })
 
   it('draws where the selected threat has been; every threat only on request', () => {

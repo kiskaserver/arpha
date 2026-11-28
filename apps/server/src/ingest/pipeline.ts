@@ -139,6 +139,25 @@ export function quotedTracks(
   return best > 0 ? picked : null
 }
 
+/**
+ * The names a post joins with "/" to `name` ("вектор Оріхів/Таврійське" → ["Таврійське"]
+ * for "Оріхів"): alternative goals of one object. Empty when `name` is in no such group.
+ */
+export function slashPeers(text: string, name: string): string[] {
+  const key = (s: string) => stemName(foldName(s)).slice(0, 4)
+  const want = key(name)
+  if (!want) return []
+  const groups = text.match(/[\p{L}'’ʼ-]+(?:\s*\/\s*[\p{L}'’ʼ-]+)+/gu) ?? []
+  for (const g of groups) {
+    const parts = g
+      .split('/')
+      .map((p) => p.trim())
+      .filter(Boolean)
+    if (parts.some((p) => key(p) === want)) return parts.filter((p) => key(p) !== want)
+  }
+  return []
+}
+
 /** True when every word is a compass word or a preposition ("з південного заходу"). */
 export function isDirectionWord(name: string): boolean {
   const words = name
@@ -374,7 +393,13 @@ export class Pipeline {
         towardPlace = null
       }
     }
-    return { ...ev, locationPlace, fromPlace, towardPlace }
+    // "вектор Оріхів/Таврійське": the model keeps one goal, the post gave two.
+    const towardAlts = towardPlace
+      ? slashPeers(text, ev.toward ?? towardPlace.name)
+          .map((n) => look(n))
+          .filter((p): p is NonNullable<typeof p> => p !== null && p.name !== towardPlace?.name)
+      : []
+    return { ...ev, locationPlace, fromPlace, towardPlace, towardAlts }
   }
 
   /** Whether the post text itself names `place` (directly, by an alias or slang). */

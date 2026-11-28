@@ -58,6 +58,8 @@ export interface Track {
   /** Last place name reported by a source. */
   placeName: string | null
   target: NamedPoint | null
+  /** Other goals the post gave as alternatives ("вектор Оріхів/Таврійське"). */
+  altTargets?: NamedPoint[]
   /** Where it came from, when a source said so (e.g. ballistic "з Криму"). */
   origin: NamedPoint | null
   /** Reported places so far, oldest first (absent on states saved by older versions). */

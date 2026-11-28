@@ -12,6 +12,7 @@ import {
   formatDistance,
   formatEta,
   formatSpeed,
+  targetNames,
 } from '../lib/format'
 import { uk } from '../lib/i18n'
 import type { ThreatRow } from '../lib/view'
@@ -58,7 +59,7 @@ const flight = $derived(
     {:else if t.status === 'active' && t.target}
       <div class="eta hot">
         <dt>{uk.target}</dt>
-        <dd>{t.target.name}</dd>
+        <dd>{targetNames(t)}</dd>
       </div>
     {/if}
     {#if a}
@@ -80,7 +81,7 @@ const flight = $derived(
     <div><dt>{uk.course}</dt><dd>{formatCourse(t)}</dd></div>
     {#if t.altitudeM}<div><dt>{uk.altitude}</dt><dd>{t.altitudeM} {uk.meters}</dd></div>{/if}
     {#if t.placeName}<div><dt>{uk.place}</dt><dd>{t.placeName}</dd></div>{/if}
-    {#if t.target && a}<div><dt>{uk.target}</dt><dd>{t.target.name}</dd></div>{/if}
+    {#if t.target && a}<div><dt>{uk.target}</dt><dd>{targetNames(t)}</dd></div>{/if}
     {#if t.origin}<div><dt>{uk.origin}</dt><dd>{uk.fromSide(t.origin.name)}</dd></div>{/if}
     {#if flight !== null}<div><dt>{uk.flightTime}</dt><dd>~{formatMinutesUk(flight)}</dd></div>{/if}
     {#if t.prediction?.impact}<div><dt>{uk.impactZone}</dt><dd>~{t.prediction.impact.radiusKm} {uk.km}</dd></div>{/if}

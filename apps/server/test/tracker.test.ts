@@ -658,6 +658,7 @@ describe('Tracker', () => {
         ctx(at, { message: message({ id: at, date: min(at), text }), parentTrackIds: [a!, b!] }),
       )
     expect(two('1 на Степногірськ\n1 на Червонодніпровку', 1).filter(Boolean)).toHaveLength(2)
-    expect(two('Курс Степногірськ/Червонодніпровка', 2).filter(Boolean)).toHaveLength(1)
+    const [one] = two('Курс Степногірськ/Червонодніпровка', 2).filter(Boolean)
+    expect(tracker.get(one!)!.altTargets?.map((g) => g.name)).toEqual(['Червонодніпровка'])
   })
 })
