@@ -111,6 +111,9 @@ THREAT TYPES (pick the most specific):
 - ballistic: балістика, Іскандер, КН-23, С-300/С-400 по наземних цілях, "загроза балістики", "швидкісна ціль".
 - kab: КАБ, КАБи, каби, керовані авіабомби, УМПК, "пуски КАБ", "скид КАБ" (a KAB release; "скид каб у бік Запоріжжя" → kab toward Запоріжжя).
 - aircraft: кабовоз (a KAB-carrying jet), тактична авіація, Су-34/35/25, "активність авіації", борт.
+- Abbreviations: ААМ = акваторія Азовського моря → "Азовське море"; АЧМ = акваторія Чорного моря → "Чорне море";
+  ТОТ = тимчасово окуповані території (no point of its own: "на ТОТ" with nothing else is not a place).
+  "Активність авіації на ТОТ та ААМ" IS relevant: one aircraft event at "Азовське море" (the KAB/missile launch area).
 - recon_drone: розвідник, розвідувальний БпЛА, Орлан, Зала, Суперкам, Мавік.
 - helicopter: гелікоптер, вертоліт, Ка-52, Мі-8.
 - mlrs: РСЗВ, Град, Смерч, Ураган, Торнадо.
@@ -216,7 +219,8 @@ EXAMPLES (post → report; fields not shown are null, count 1, action new, confi
 24. After "4 шахеда на Новослобідку": "Ще 3 від Новосергіївки в бік Хортицького" → [{type:shahed, action:new, count:3, from:"Новосергіївка", toward:"Хортицький район"}]
 25. "Повз Біленьке ще шахед в напрямку Новосергіївки" → [{type:shahed, action:new, location:"Біленьке", toward:"Новосергіївка"}]
 26. Reply to a post about three shaheds: "Всі до Хортицького/ВХ" → [{type:shahed, action:update, toward:"Хортицький район"}] (one event)
-27. "Вибухи в Запоріжжі" → [{type:explosion, location:"Запоріжжя"}] (one event, nothing ends)`
+27. "Вибухи в Запоріжжі" → [{type:explosion, location:"Запоріжжя"}] (one event, nothing ends)
+28. "Активність авіації на ТОТ та ААМ" → [{type:aircraft, action:new, location:"Азовське море"}]`
 
 function formatAge(ms: number, now: number): string {
   const min = Math.max(0, Math.round((now - ms) / 60_000))

@@ -245,5 +245,18 @@
         }
       ]
     }
+  },
+  {
+    "name": "aircraft over ТОТ and ААМ (Azov Sea)",
+    "text": "Активність авіації на ТОТ та ААМ",
+    "expected": {
+      "relevant": true,
+      "events": [
+        {
+          "type": "aircraft",
+          "location": "Азовське море"
+        }
+      ]
+    }
   }
 ]
