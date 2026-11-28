@@ -20,6 +20,7 @@ import {
 } from '@arpha/shared'
 import type { ExtractedEvent, RawMessage, TrackBrief } from '../extract/types'
 import type { Place } from '../geo/gazetteer'
+import { foldName, stemName } from '../text/normalize'
 import {
   type KalmanState,
   kfClampSpeed,
@@ -202,6 +203,14 @@ export class Tracker {
     const used = new Set<string>()
     const courseOnly = (e: ResolvedEvent) =>
       e.action === 'update' && !e.locationPlace && e.count === null
+    // Only goals the post itself joins with "/" ("Аеропорт/Матвіївка") are alternatives;
+    // "1 на Степногірськ ⏎ 1 на Червонодніпровку" or "перший …, другий …" are two objects.
+    const text = foldName(ctx.message.text)
+    const key = (e: ResolvedEvent) => stemName(foldName(e.towardPlace?.name ?? '')).slice(0, 4)
+    const slashed = (a: ResolvedEvent, b: ResolvedEvent) =>
+      text
+        .split(/[\n,;!?]/)
+        .some((part) => part.includes('/') && part.includes(key(a)) && part.includes(key(b)))
     // "Всі до Хортицького" came back as six "lost" events, one per active threat of every
     // channel. A post ends the objects of its own reply thread; outside a thread, at most
     // one object on the model's say-so alone. Naming where it fell still ends it.
@@ -226,7 +235,9 @@ export class Tracker {
       // ("3 … ⏎ 1 …") or named positions stay separate.
       const alternative =
         courseOnly(ev) &&
-        events.slice(0, i).some((p, j) => ids[j] && p.type === ev.type && courseOnly(p))
+        events
+          .slice(0, i)
+          .some((p, j) => ids[j] && p.type === ev.type && courseOnly(p) && slashed(p, ev))
       const id = alternative ? null : this.#applyOne(ev, ctx, used)
       if (id) used.add(id)
       ids.push(id)

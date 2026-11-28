@@ -3,6 +3,8 @@ import {
   inBbox,
   type LatLon,
   type ThreatType,
+  type Track,
+  typesCompatible,
   weaponSpec,
   ZAPORIZHZHIA,
 } from '@arpha/shared'
@@ -17,6 +19,7 @@ import {
 import type { ResolvedEvent, Tracker } from '../fusion/tracker'
 import type { Gazetteer } from '../geo/gazetteer'
 import type { Logger } from '../logger'
+import { foldName, stemName } from '../text/normalize'
 
 export interface MessageSource {
   /** Fetch a message by id (used to walk reply chains not yet seen). */
@@ -92,6 +95,48 @@ export function clearScope(text: string): ThreatType[] | undefined {
     types.push('shahed', 'jet_drone', 'molniya', 'fpv', 'recon_drone', 'unknown')
   if (/авіац|кабовоз|літак|борт/.test(t)) types.push('aircraft')
   return types.length ? types : undefined
+}
+
+/**
+ * The tracks of the parent's events named in a quote ("1 на Великий Луг від Михайлівки"
+ * out of "2 на Дніпропетровщину ⏎ 1 на Великий Луг від Михайлівки ⏎ 1 західніше …"):
+ * the events whose places the quote mentions. null when nothing matches (use them all).
+ */
+export function quotedTracks(
+  quote: string,
+  events: Extraction['events'],
+  storedJson: string | null,
+  parentText = '',
+): string[] | null {
+  let perEvent: (string | null)[] = []
+  try {
+    perEvent =
+      (JSON.parse(storedJson ?? '{}') as { eventTrackIds?: (string | null)[] }).eventTrackIds ?? []
+  } catch {
+    return null
+  }
+  const q = foldName(quote)
+  // The parent's other lines: a place named there belongs to another object.
+  const rest = foldName(parentText.replace(quote, ' '))
+  // Four letters of the stem survive Ukrainian vowel alternation (Оріхів → над Оріховом).
+  const key = (name: string) => stemName(foldName(name)).slice(0, 4)
+  let best = 0
+  let picked: string[] = []
+  events.forEach((e, i) => {
+    const id = perEvent[i]
+    if (!id) return
+    const names = [e.location, e.toward, e.from].filter((n) => n !== null)
+    const inQuote = names.filter((n) => q.includes(key(n))).length
+    const elsewhere = names.filter((n) => rest.includes(key(n))).length
+    const score = inQuote ? inQuote - elsewhere + 0.5 : 0
+    if (score > best) {
+      best = score
+      picked = [id]
+    } else if (score === best && score > 0 && !picked.includes(id)) {
+      picked.push(id)
+    }
+  })
+  return best > 0 ? picked : null
 }
 
 /** True when every word is a compass word or a preposition ("з південного заходу"). */
@@ -189,7 +234,11 @@ export class Pipeline {
     }
 
     const now = this.#now()
-    const save = (extraction: Extraction | null, trackIds: string[]) =>
+    const save = (
+      extraction: Extraction | null,
+      trackIds: string[],
+      eventTrackIds?: (string | null)[],
+    ) =>
       store.saveMessage({
         channel: msg.channel,
         id: msg.id,
@@ -197,7 +246,8 @@ export class Pipeline {
         editDate: msg.editDate,
         text: msg.text,
         replyToId: msg.replyToId,
-        extraction: extraction ? JSON.stringify(extraction) : '',
+        // Which event became which track: a later quote-reply to one line needs it.
+        extraction: extraction ? JSON.stringify({ ...extraction, eventTrackIds }) : '',
         trackIds,
       })
 
@@ -247,7 +297,7 @@ export class Pipeline {
       }
 
       const trackIds = [...new Set(ids.filter((id): id is string => id !== null))]
-      save(extraction, trackIds)
+      save(extraction, trackIds, ids)
       this.#d.onProcessed?.({ message: msg, extraction, resolved, trackIds })
       this.#stats.processed++
       this.#stats.events += extraction.events.length
@@ -274,9 +324,14 @@ export class Pipeline {
     parentPlaces: string[],
   ): ResolvedEvent {
     const { gazetteer, tracker } = this.#d
-    const linked = [ev.track_id, ...parentTrackIds]
-      .map((id) => (id ? tracker.get(id) : undefined))
-      .filter((t) => t !== undefined)
+    // Only the object this event continues anchors it: a "new" one is another object, and
+    // KABs replying to "авіація над Азовським морем" fall 170 km from their carriers.
+    const linked =
+      ev.action === 'new'
+        ? []
+        : [ev.track_id, ...parentTrackIds]
+            .map((id) => (id ? tracker.get(id) : undefined))
+            .filter((t): t is Track => t !== undefined && typesCompatible(t.type, ev.type))
     const anchor = linked.map((t) => t.position).find(Boolean) ?? null
     const near: LatLon = anchor ?? ZAPORIZHZHIA
     // A name that only matches a homonym far outside the region is a miss, not a teleport.
@@ -342,7 +397,17 @@ export class Pipeline {
       if (stored) {
         const events = Pipeline.parseStored(stored.extraction)?.events ?? []
         const places = events.flatMap((e) => [e.location, e.toward]).filter((n) => n !== null)
-        parents.push({ text: stored.text, date: stored.date, trackIds: stored.trackIds, places })
+        // A quote-reply to one line of a multi-object post is about that line's object.
+        const quoted =
+          parents.length === 0 && msg.quoteText
+            ? quotedTracks(msg.quoteText, events, stored.extraction, stored.text)
+            : null
+        parents.push({
+          text: stored.text,
+          date: stored.date,
+          trackIds: quoted ?? stored.trackIds,
+          places,
+        })
         replyTo = stored.replyToId
         continue
       }

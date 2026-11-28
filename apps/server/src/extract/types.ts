@@ -12,6 +12,11 @@ export interface RawMessage {
   editDate: number | null
   text: string
   replyToId: number | null
+  /**
+   * A quote-reply: the part of the parent the reply highlights ("1 на Великий Луг від
+   * Михайлівки" out of a three-line post). The reply is about that part only.
+   */
+  quoteText?: string | null
 }
 
 export const ACTIONS = ['new', 'update', 'destroyed', 'lost'] as const

@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Store } from '../src/db'
+import { buildUserPrompt } from '../src/extract/prompt'
 import type { Extraction, ExtractionInput, Extractor, RawMessage } from '../src/extract/types'
 import { Tracker } from '../src/fusion/tracker'
-import { clearScope, isDirectionWord, Pipeline } from '../src/ingest/pipeline'
+import { clearScope, isDirectionWord, Pipeline, quotedTracks } from '../src/ingest/pipeline'
 import { silentLogger } from '../src/logger'
 import { event, gazetteer, message, min } from './helpers'
 
@@ -217,6 +218,97 @@ describe('Pipeline', () => {
     expect(clearScope('Кабовози пішли, чисто')).toEqual(['aircraft'])
   })
 
+  it('a quote-reply to one line of a three-object post is about that object only', async () => {
+    const { pipeline, tracker, extract, setNow } = setup((i) =>
+      i.message.id === 1
+        ? relevant(
+            event({
+              type: 'jet_drone',
+              count: 2,
+              action: 'update',
+              toward: 'Дніпропетровська область',
+              location: 'Вільнянськ',
+            }),
+            event({
+              type: 'jet_drone',
+              action: 'update',
+              location: 'Великий Луг',
+              toward: 'Бородинський',
+            }),
+            event({
+              type: 'jet_drone',
+              action: 'update',
+              location: 'Новомиколаївка',
+              toward: 'Михайло-Лукашеве',
+            }),
+          )
+        : relevant(event({ type: 'jet_drone', action: 'update', location: 'Бородинський' })),
+    )
+    await pipeline.submit(
+      message({
+        id: 1,
+        text: '2 вийшли на Дніпропетровщину\n1 на Великий Луг від Михайлівки\n1 західніше Новомиколаївки розворот на МЛ',
+      }),
+    )
+    const before = new Map(tracker.active().map((t) => [t.id, t.placeName]))
+    expect(before.size).toBe(3)
+    setNow(min(4))
+    // "Бородок", quoting only the second line.
+    await pipeline.submit(
+      message({
+        id: 2,
+        text: 'Бородок',
+        replyToId: 1,
+        date: min(3),
+        quoteText: '1 на Великий Луг від Михайлівки',
+      }),
+    )
+    // The model is told which part is quoted…
+    expect(buildUserPrompt(extract.mock.calls[1]![0])).toContain(
+      'QUOTES ONLY THIS PART OF THE NEAREST PARENT: «1 на Великий Луг від Михайлівки»',
+    )
+    // …and only that object moved to Бородинський.
+    const moved = tracker.active().filter((t) => t.placeName === 'Бородинський')
+    expect(
+      moved,
+      JSON.stringify(tracker.active().map((t) => [t.placeName, t.target?.name])),
+    ).toHaveLength(1)
+    expect(before.get(moved[0]!.id)).toBe('Великий Луг')
+    expect(
+      tracker
+        .active()
+        .map((t) => t.placeName)
+        .sort(),
+    ).toEqual(['Бородинський', 'Вільнянськ', 'Новомиколаївка'].sort())
+  })
+
+  it('a place named in the other lines does not pull the quote to another object', () => {
+    const parent = [
+      '2 вийшли на Дніпропетровщину',
+      '1 на Великий Луг від Михайлівки',
+      '1 західніше Новомиколаївки розворот на МЛ',
+    ].join(String.fromCharCode(10))
+    const events = [
+      event({ toward: 'Дніпропетровська область' }),
+      event({ location: 'Михайлівка', toward: 'Великий Луг' }),
+      // "МЛ" read as Михайло-Лукашеве shares its stem with "Михайлівки" in the quote.
+      event({ location: 'Новомиколаївка', toward: 'Михайло-Лукашеве' }),
+    ]
+    const json = JSON.stringify({ eventTrackIds: ['ta', 'tb', 'tc'] })
+    expect(quotedTracks('1 на Великий Луг від Михайлівки', events, json, parent)).toEqual(['tb'])
+    expect(quotedTracks('2 вийшли на Дніпропетровщину', events, json, parent)).toEqual(['ta'])
+  })
+
+  it('a quote that names nothing known falls back to the whole parent', () => {
+    expect(
+      quotedTracks('щось', [event({ location: 'Оріхів' })], '{"eventTrackIds":["t1"]}'),
+    ).toBeNull()
+    expect(
+      quotedTracks('над Оріховом', [event({ location: 'Оріхів' })], '{"eventTrackIds":["t1"]}'),
+    ).toEqual(['t1'])
+    expect(quotedTracks('Оріхів', [event({ location: 'Оріхів' })], 'not json')).toBeNull()
+  })
+
   it('all-clear clears the board', async () => {
     const { pipeline, tracker } = setup((i) =>
       i.message.id === 1
@@ -337,6 +429,22 @@ describe('Pipeline', () => {
     expect(await run('Балістика з Брянська на Запоріжжя!', 'Брянськ')).toHaveLength(1)
     // Within reach: a threat as before.
     expect(await run('Загроза балістики з Криму', 'Крим')).toHaveLength(1)
+  })
+
+  it('a new object in reply to far-away aircraft is not measured against them', async () => {
+    const { pipeline, tracker } = setup((i) =>
+      i.message.id === 1
+        ? relevant(event({ type: 'aircraft', location: 'Азовське море' }))
+        : relevant(event({ type: 'kab', action: 'new', location: 'Покровське' })),
+    )
+    await pipeline.submit(
+      message({ id: 1, text: 'Активність авіації в акваторії Азовського моря' }),
+    )
+    // KABs land ~170 km from the carriers the thread is about.
+    await pipeline.submit(
+      message({ id: 2, text: 'Закидують КАБами Покровське', replyToId: 1, date: min(0.5) }),
+    )
+    expect(tracker.active().find((t) => t.type === 'kab')?.placeName).toBe('Покровське')
   })
 
   it('keeps launch areas outside the oblast as the origin', async () => {

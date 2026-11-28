@@ -64,7 +64,20 @@ describe('telegram mapping', () => {
       editDate: 1_700_000_060_000,
       text: 'текст',
       replyToId: 4,
+      quoteText: null,
     })
+    // A quote-reply carries the highlighted part of the parent.
+    expect(
+      toRawMessage(
+        {
+          id: 6,
+          date: 1,
+          message: 'Бородок',
+          replyTo: { replyToMsgId: 5, quoteText: ' 1 на Великий Луг від Михайлівки ' },
+        },
+        { key: 'c', title: 't' },
+      ).quoteText,
+    ).toBe('1 на Великий Луг від Михайлівки')
     expect(toRawMessage({ id: 1, date: 1 }, { key: 'c', title: 't' })).toMatchObject({
       text: '',
       editDate: null,

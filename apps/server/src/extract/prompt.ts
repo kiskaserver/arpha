@@ -254,6 +254,14 @@ export function buildUserPrompt(input: ExtractionInput): string {
     })
   }
 
+  if (input.message.quoteText && input.parents.length) {
+    lines.push(
+      '',
+      `THIS REPLY QUOTES ONLY THIS PART OF THE NEAREST PARENT: «${input.message.quoteText}»`,
+      'It is about the object(s) of that part only — not every object the parent lists.',
+    )
+  }
+
   lines.push('', 'MESSAGE:', input.message.text)
   return lines.join('\n')
 }

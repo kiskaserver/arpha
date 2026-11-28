@@ -644,4 +644,20 @@ describe('Tracker', () => {
     tracker.apply([resolved({ type: 'kab', location: 'Магдалинівка' })], on('d', 1.2))
     expect(tracker.active().filter((t) => t.placeName === 'Магдалинівка')).toHaveLength(1)
   })
+
+  it('"X/Y" goals are one object; goals on separate lines are two', () => {
+    const { tracker } = setup()
+    const [a] = tracker.apply([resolved({ type: 'jet_drone', location: 'Вільнянськ' })], ctx(0))
+    const [b] = tracker.apply([resolved({ type: 'jet_drone', location: 'Оріхів' })], ctx(0))
+    const two = (text: string, at: number) =>
+      tracker.apply(
+        [
+          resolved({ type: 'jet_drone', action: 'update', toward: 'Степногірськ' }),
+          resolved({ type: 'jet_drone', action: 'update', toward: 'Червонодніпровка' }),
+        ],
+        ctx(at, { message: message({ id: at, date: min(at), text }), parentTrackIds: [a!, b!] }),
+      )
+    expect(two('1 на Степногірськ\n1 на Червонодніпровку', 1).filter(Boolean)).toHaveLength(2)
+    expect(two('Курс Степногірськ/Червонодніпровка', 2).filter(Boolean)).toHaveLength(1)
+  })
 })

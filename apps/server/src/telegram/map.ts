@@ -7,7 +7,7 @@ export interface GramMessageLike {
   date: number
   editDate?: number | null
   message?: string | null
-  replyTo?: { replyToMsgId?: number | null } | null
+  replyTo?: { replyToMsgId?: number | null; quoteText?: string | null } | null
 }
 
 export interface ChannelInfo {
@@ -24,6 +24,7 @@ export function toRawMessage(m: GramMessageLike, channel: ChannelInfo): RawMessa
     editDate: m.editDate ? m.editDate * 1000 : null,
     text: m.message ?? '',
     replyToId: m.replyTo?.replyToMsgId ?? null,
+    quoteText: m.replyTo?.quoteText?.trim() || null,
   }
 }
 
